@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.scbrbackend.mapper.ReportMapper">
+
+    <select id="selectReportPage" resultType="com.scbrbackend.model.vo.ReportPageVO">
+        SELECT 
+            t.id,
+            c.name AS courseName,
+            cr.name AS classroomName,
+            th.name AS teacherName,
+            t.media_type AS mediaType,
+            t.created_at AS createdAt,
+            t.status AS status,
+            t.attendance_count AS attendanceCount,
+            t.total_score AS totalScore
+        FROM analysis_task t
+        LEFT JOIN course_schedule cs ON t.schedule_id = cs.id
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN teacher th ON cs.teacher_id = th.id
+        <where>
+            <if test="query.keyword != null and query.keyword != ''">
+                AND (c.name LIKE CONCAT('%', #{query.keyword}, '%') OR th.name LIKE CONCAT('%', #{query.keyword}, '%'))
+            </if>
+            <if test="query.startDate != null">
+                AND DATE(t.created_at) &gt;= #{query.startDate}
+            </if>
+            <if test="query.endDate != null">
+                AND DATE(t.created_at) &lt;= #{query.endDate}
+            </if>
+            <if test="currentTeacherId != null">
+                AND cs.teacher_id = #{currentTeacherId}
+            </if>
+        </where>
+        ORDER BY t.created_at DESC
+    </select>
+
+    <select id="selectReportExport" resultType="com.scbrbackend.model.vo.ReportPageVO">
+        SELECT 
+            t.id,
+            c.name AS courseName,
+            cr.name AS classroomName,
+            th.name AS teacherName,
+            t.media_type AS mediaType,
+            t.created_at AS createdAt,
+            t.status AS status,
+            t.attendance_count AS attendanceCount,
+            t.total_score AS totalScore
+        FROM analysis_task t
+        LEFT JOIN course_schedule cs ON t.schedule_id = cs.id
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN teacher th ON cs.teacher_id = th.id
+        WHERE t.id IN 
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        <if test="currentTeacherId != null">
+            AND cs.teacher_id = #{currentTeacherId}
+        </if>
+        ORDER BY t.created_at DESC
+    </select>
+
+    <select id="selectReportDetailById" resultType="com.scbrbackend.model.vo.ReportDetailVO">
+        SELECT 
+            t.id,
+            c.name AS courseName,
+            cr.name AS classroomName,
+            th.name AS teacherName,
+            t.media_type AS mediaType,
+            t.created_at AS createdAt,
+            t.status AS status,
+            t.attendance_count AS attendanceCount,
+            t.total_score AS totalScore,
+            sf.file_url AS fileUrl
+        FROM analysis_task t
+        LEFT JOIN course_schedule cs ON t.schedule_id = cs.id
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN teacher th ON cs.teacher_id = th.id
+        LEFT JOIN sys_file sf ON t.file_id = sf.id
+        <where>
+            t.id = #{id}
+            <if test="currentTeacherId != null">
+                AND cs.teacher_id = #{currentTeacherId}
+            </if>
+        </where>
+    </select>
+
+</mapper>

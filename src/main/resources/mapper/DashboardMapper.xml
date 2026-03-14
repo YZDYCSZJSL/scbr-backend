@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.scbrbackend.mapper.DashboardMapper">
+
+    <!-- Admin KPI -->
+    <select id="getTotalTaskCount" resultType="java.lang.Integer">
+        SELECT IFNULL(COUNT(1), 0) FROM analysis_task WHERE status = 2
+    </select>
+    
+    <select id="getGlobalAttendanceRate" resultType="java.util.Map">
+        SELECT IFNULL(SUM(t.attendance_count), 0) as total_attendance, IFNULL(SUM(s.student_count), 0) as total_student
+        FROM analysis_task t
+        JOIN course_schedule s ON t.schedule_id = s.id
+        WHERE t.status = 2 AND t.created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+    </select>
+    
+    <select id="getGlobalAverageScore" resultType="java.lang.Double">
+        SELECT IFNULL(AVG(total_score), 0)
+        FROM analysis_task
+        WHERE status = 2 AND created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+    </select>
+    
+    <select id="getGlobalBehaviorPie" resultType="com.scbrbackend.model.dto.dashboard.DashboardNameValueItem">
+        SELECT d.behavior_type as name, IFNULL(SUM(d.count), 0) as value
+        FROM analysis_detail d
+        JOIN analysis_task t ON d.task_id = t.id
+        WHERE t.status = 2 AND t.created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY d.behavior_type
+    </select>
+
+    <select id="getGlobalTeacherScoreRanking" resultType="com.scbrbackend.model.dto.dashboard.DashboardNameValueItem">
+        SELECT u.name as name, IFNULL(AVG(t.total_score), 0) as value
+        FROM analysis_task t
+        JOIN teacher u ON t.teacher_id = u.id
+        WHERE t.status = 2 AND t.created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY t.teacher_id, u.name
+        ORDER BY value DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="getGlobalScoreTrend" resultType="java.util.Map">
+        SELECT DATE_FORMAT(created_at, '%m-%d') as dateStr, IFNULL(AVG(total_score), 0) as score
+        FROM analysis_task
+        WHERE status = 2 AND created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY dateStr
+        ORDER BY dateStr ASC
+    </select>
+
+    <!-- Teacher KPI -->
+    <select id="getTeacherCourseCount" resultType="java.lang.Integer">
+        SELECT IFNULL(COUNT(DISTINCT course_id), 0)
+        FROM course_schedule
+        WHERE teacher_id = #{teacherId}
+    </select>
+
+    <select id="getTeacherAttendanceRate" resultType="java.util.Map">
+        SELECT IFNULL(SUM(t.attendance_count), 0) as total_attendance, IFNULL(SUM(s.student_count), 0) as total_student
+        FROM analysis_task t
+        JOIN course_schedule s ON t.schedule_id = s.id
+        WHERE t.teacher_id = #{teacherId} AND t.status = 2 AND t.created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+    </select>
+
+    <select id="getTeacherAverageScore" resultType="java.lang.Double">
+        SELECT IFNULL(AVG(total_score), 0)
+        FROM analysis_task
+        WHERE teacher_id = #{teacherId} AND status = 2 AND created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+    </select>
+
+    <select id="getTeacherBehaviorPie" resultType="com.scbrbackend.model.dto.dashboard.DashboardNameValueItem">
+        SELECT d.behavior_type as name, IFNULL(SUM(d.count), 0) as value
+        FROM analysis_detail d
+        JOIN analysis_task t ON d.task_id = t.id
+        WHERE t.teacher_id = #{teacherId} AND t.status = 2 AND t.created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY d.behavior_type
+    </select>
+
+    <select id="getTeacherCourseScoreRanking" resultType="com.scbrbackend.model.dto.dashboard.DashboardNameValueItem">
+        SELECT c.name as name, IFNULL(AVG(t.total_score), 0) as value
+        FROM analysis_task t
+        JOIN course_schedule s ON t.schedule_id = s.id
+        JOIN course c ON s.course_id = c.id
+        WHERE t.teacher_id = #{teacherId} AND t.status = 2 AND t.created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY s.course_id, c.name
+        ORDER BY value DESC
+    </select>
+
+    <select id="getTeacherScoreTrend" resultType="java.util.Map">
+        SELECT DATE_FORMAT(created_at, '%m-%d') as dateStr, IFNULL(AVG(total_score), 0) as score
+        FROM analysis_task
+        WHERE teacher_id = #{teacherId} AND status = 2 AND created_at &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY dateStr
+        ORDER BY dateStr ASC
+    </select>
+
+</mapper>

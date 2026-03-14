@@ -1,0 +1,31 @@
+server:
+  port: 8080
+  
+spring:
+  application:
+    name: scbr-backend
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/smart_classroom_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root
+    password: li01221878.
+  servlet:
+    multipart:
+      max-file-size: 500MB       # 设置单个文件允许的最大大小 (这里以10MB为例，你可以根据需求调整)
+      max-request-size: 500MB    # 设置单次请求允许的总大小 (包含所有文件和表单数据)
+
+scbrbackend:
+  # 后端服务公网地址，用于作为模型端处理完后的回调地址。由于 127.0.0.1 会指向模型服务器自己，这里一定要改成后端服务器的真实公网IP和端口！
+  server-address: "http://<你的后端公网IP>:8080"
+  model:
+    base-url: ${model.base-url}
+    # 填入与 Python 模型服务实际配置一致的 token
+    token: ${model.token}
+  alioss:
+    bucket-name: ${alioss.bucket-name}
+    endpoint: ${alioss.endpoint}
+    access-key-secret: ${alioss.access-key-secret}
+    access-key-id: ${alioss.access-key-id}
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
