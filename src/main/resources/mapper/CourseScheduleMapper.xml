@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.scbrbackend.mapper.CourseScheduleMapper">
+
+    <!-- ======================== 公用 SQL 片段 ======================== -->
+
+    <!-- 排课分页 WHERE 条件 -->
+    <sql id="schedulePageWhere">
+        <where>
+            <if test="query.academicYear != null and query.academicYear != ''">
+                AND cs.academic_year = #{query.academicYear}
+            </if>
+            <if test="query.semester != null">
+                AND cs.semester = #{query.semester}
+            </if>
+
+            <if test="query.courseId != null">
+                AND cs.course_id = #{query.courseId}
+            </if>
+            <if test="query.teacherId != null">
+                AND cs.teacher_id = #{query.teacherId}
+            </if>
+            <if test="query.classroomId != null">
+                AND cs.classroom_id = #{query.classroomId}
+            </if>
+            <if test="query.weekday != null">
+                AND cs.weekday = #{query.weekday}
+            </if>
+            <if test="query.keyword != null and query.keyword != ''">
+                AND (c.name LIKE CONCAT('%', #{query.keyword}, '%')
+                     OR t.name LIKE CONCAT('%', #{query.keyword}, '%')
+                     OR cr.name LIKE CONCAT('%', #{query.keyword}, '%'))
+            </if>
+        </where>
+    </sql>
+
+    <!-- 排课分页 FROM + JOIN -->
+    <sql id="schedulePageFrom">
+        FROM course_schedule cs
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN teacher t ON cs.teacher_id = t.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        LEFT JOIN sys_section_time se ON cs.end_section_id = se.id
+    </sql>
+
+    <!-- ======================== 分页查询 ======================== -->
+
+    <select id="selectSchedulePage" resultType="com.scbrbackend.model.vo.SchedulePageVO">
+        SELECT
+            cs.id,
+            cs.academic_year   AS academicYear,
+            cs.semester,
+
+            cs.course_id       AS courseId,
+            c.course_no        AS courseNo,
+            c.name             AS courseName,
+
+            cs.teacher_id      AS teacherId,
+            t.emp_no           AS teacherEmpNo,
+            t.name             AS teacherName,
+
+            cs.classroom_id    AS classroomId,
+            cr.room_no         AS classroomNo,
+            cr.name            AS classroomName,
+
+            cs.weekday,
+
+            cs.start_section_id AS startSectionId,
+            ss.section_no       AS startSectionNo,
+            ss.section_name     AS startSectionName,
+            ss.start_time       AS startSectionTime,
+
+            cs.end_section_id   AS endSectionId,
+            se.section_no       AS endSectionNo,
+            se.section_name     AS endSectionName,
+            se.end_time         AS endSectionTime,
+
+            cs.start_week       AS startWeek,
+            cs.end_week         AS endWeek,
+            cs.week_type        AS weekType,
+
+            cs.student_count    AS studentCount,
+            cs.remark,
+            cs.status,
+            cs.created_at       AS createdAt,
+            cs.updated_at       AS updatedAt
+        <include refid="schedulePageFrom"/>
+        <include refid="schedulePageWhere"/>
+        ORDER BY cs.created_at DESC
+        LIMIT #{query.size} OFFSET #{query.offset}
+    </select>
+
+    <select id="selectSchedulePageCount" resultType="long">
+        SELECT COUNT(1)
+        <include refid="schedulePageFrom"/>
+        <include refid="schedulePageWhere"/>
+    </select>
+
+    <!-- ======================== 冲突检测 ======================== -->
+
+    <!--
+        教师冲突检测：基于 sys_section_time.section_no 比较节次范围重叠
+        冲突条件：学年+学期+星期相同 + 节次范围重叠 + 周次范围重叠 + 周次类型可重叠 + 同教师
+    -->
+    <select id="checkTeacherConflict" resultType="int">
+        SELECT COUNT(1)
+        FROM course_schedule cs
+        JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        JOIN sys_section_time se ON cs.end_section_id = se.id
+        WHERE cs.teacher_id = #{teacherId}
+          AND cs.academic_year = #{academicYear}
+          AND cs.semester = #{semester}
+          AND cs.weekday = #{weekday}
+          /* 节次范围重叠: MAX(startNo1, startNo2) &lt;= MIN(endNo1, endNo2) */
+          AND GREATEST(ss.section_no, #{startSectionNo}) &lt;= LEAST(se.section_no, #{endSectionNo})
+          /* 周次范围重叠: MAX(startWeek1, startWeek2) &lt;= MIN(endWeek1, endWeek2) */
+          AND GREATEST(cs.start_week, #{startWeek}) &lt;= LEAST(cs.end_week, #{endWeek})
+          /* 周次类型可重叠: 非(一方单周+另一方双周) */
+          AND NOT (cs.week_type = 1 AND #{weekType} = 2)
+          AND NOT (cs.week_type = 2 AND #{weekType} = 1)
+        <if test="excludeId != null">
+          AND cs.id != #{excludeId}
+        </if>
+    </select>
+
+    <!--
+        教室冲突检测：逻辑同教师冲突，只是比较 classroom_id
+    -->
+    <select id="checkClassroomConflict" resultType="int">
+        SELECT COUNT(1)
+        FROM course_schedule cs
+        JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        JOIN sys_section_time se ON cs.end_section_id = se.id
+        WHERE cs.classroom_id = #{classroomId}
+          AND cs.academic_year = #{academicYear}
+          AND cs.semester = #{semester}
+          AND cs.weekday = #{weekday}
+          AND GREATEST(ss.section_no, #{startSectionNo}) &lt;= LEAST(se.section_no, #{endSectionNo})
+          AND GREATEST(cs.start_week, #{startWeek}) &lt;= LEAST(cs.end_week, #{endWeek})
+          AND NOT (cs.week_type = 1 AND #{weekType} = 2)
+          AND NOT (cs.week_type = 2 AND #{weekType} = 1)
+        <if test="excludeId != null">
+          AND cs.id != #{excludeId}
+        </if>
+    </select>
+
+    <!-- ======================== analysis-list ======================== -->
+
+    <!-- 文件流: 查 status=1 或 2 的排课，可选按教师过滤 -->
+    <select id="selectAnalysisListForFile" resultType="com.scbrbackend.model.vo.ScheduleAnalysisItemVO">
+        SELECT
+            cs.id,
+            c.name              AS courseName,
+            t.name              AS teacherName,
+            cr.name             AS classroomName,
+            cs.academic_year    AS academicYear,
+            cs.semester,
+            cs.weekday,
+            ss.section_no       AS startSectionNo,
+            se.section_no       AS endSectionNo,
+            ss.start_time       AS startSectionTime,
+            se.end_time         AS endSectionTime,
+            cs.start_week       AS startWeek,
+            cs.end_week         AS endWeek,
+            cs.week_type        AS weekType,
+            cs.student_count    AS studentCount
+        FROM course_schedule cs
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN teacher t ON cs.teacher_id = t.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        LEFT JOIN sys_section_time se ON cs.end_section_id = se.id
+        WHERE cs.status IN (0, 1, 2)
+        <if test="teacherId != null">
+          AND cs.teacher_id = #{teacherId}
+        </if>
+        ORDER BY cs.academic_year DESC, cs.semester DESC, cs.weekday ASC, ss.section_no ASC
+    </select>
+
+    <!--
+        实时流: 基于学期配置推算的当前周次+星期+节次，筛选正在进行中的课
+        筛选条件:
+          1. 学年+学期匹配
+          2. weekday = 当前星期
+          3. 当前周次在 [startWeek, endWeek] 范围内
+          4. weekType 匹配（全周始终匹配；单周时当前周为奇数才匹配；双周时当前周为偶数才匹配）
+          5. 当前节次在 [startSectionNo, endSectionNo] 范围内（如果能确定当前节次）
+    -->
+    <select id="selectAnalysisListForStream" resultType="com.scbrbackend.model.vo.ScheduleAnalysisItemVO">
+        SELECT
+            cs.id,
+            c.name              AS courseName,
+            t.name              AS teacherName,
+            cr.name             AS classroomName,
+            cs.academic_year    AS academicYear,
+            cs.semester,
+            cs.weekday,
+            ss.section_no       AS startSectionNo,
+            se.section_no       AS endSectionNo,
+            ss.start_time       AS startSectionTime,
+            se.end_time         AS endSectionTime,
+            cs.start_week       AS startWeek,
+            cs.end_week         AS endWeek,
+            cs.week_type        AS weekType,
+            cs.student_count    AS studentCount
+        FROM course_schedule cs
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN teacher t ON cs.teacher_id = t.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        LEFT JOIN sys_section_time se ON cs.end_section_id = se.id
+        WHERE cs.academic_year = #{academicYear}
+          AND cs.semester = #{semester}
+          AND cs.weekday = #{currentWeekday}
+          AND #{currentWeek} BETWEEN cs.start_week AND cs.end_week
+          /* weekType 匹配 */
+          AND (cs.week_type = 0
+               OR (cs.week_type = 1 AND #{currentWeek} % 2 = 1)
+               OR (cs.week_type = 2 AND #{currentWeek} % 2 = 0))
+          /* 节次匹配：当前节次落在排课的节次范围内（如果当前节次可确定） */
+          <if test="currentSectionNo != null">
+          AND ss.section_no &lt;= #{currentSectionNo}
+          AND se.section_no &gt;= #{currentSectionNo}
+          </if>
+        <if test="teacherId != null">
+          AND cs.teacher_id = #{teacherId}
+        </if>
+        ORDER BY ss.section_no ASC
+    </select>
+
+    <select id="selectTeacherConflictList" resultType="com.scbrbackend.model.vo.ScheduleConflictItemVO">
+        SELECT 
+            cs.id,
+            c.name AS courseName,
+            t.name AS teacherName,
+            cr.name AS classroomName,
+            cs.weekday,
+            ss.section_no AS startSectionNo,
+            se.section_no AS endSectionNo,
+            cs.start_week AS startWeek,
+            cs.end_week AS endWeek,
+            cs.week_type AS weekType,
+            cs.remark
+        FROM course_schedule cs
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN teacher t ON cs.teacher_id = t.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        LEFT JOIN sys_section_time se ON cs.end_section_id = se.id
+        WHERE cs.teacher_id = #{teacherId}
+          AND cs.academic_year = #{academicYear}
+          AND cs.semester = #{semester}
+          AND cs.weekday = #{weekday}
+          AND GREATEST(ss.section_no, #{startSectionNo}) &lt;= LEAST(se.section_no, #{endSectionNo})
+          AND GREATEST(cs.start_week, #{startWeek}) &lt;= LEAST(cs.end_week, #{endWeek})
+          AND NOT (cs.week_type = 1 AND #{weekType} = 2)
+          AND NOT (cs.week_type = 2 AND #{weekType} = 1)
+        <if test="excludeId != null">
+          AND cs.id != #{excludeId}
+        </if>
+    </select>
+
+    <select id="selectClassroomConflictList" resultType="com.scbrbackend.model.vo.ScheduleConflictItemVO">
+        SELECT 
+            cs.id,
+            c.name AS courseName,
+            t.name AS teacherName,
+            cr.name AS classroomName,
+            cs.weekday,
+            ss.section_no AS startSectionNo,
+            se.section_no AS endSectionNo,
+            cs.start_week AS startWeek,
+            cs.end_week AS endWeek,
+            cs.week_type AS weekType,
+            cs.remark
+        FROM course_schedule cs
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN teacher t ON cs.teacher_id = t.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        LEFT JOIN sys_section_time se ON cs.end_section_id = se.id
+        WHERE cs.classroom_id = #{classroomId}
+          AND cs.academic_year = #{academicYear}
+          AND cs.semester = #{semester}
+          AND cs.weekday = #{weekday}
+          AND GREATEST(ss.section_no, #{startSectionNo}) &lt;= LEAST(se.section_no, #{endSectionNo})
+          AND GREATEST(cs.start_week, #{startWeek}) &lt;= LEAST(cs.end_week, #{endWeek})
+          AND NOT (cs.week_type = 1 AND #{weekType} = 2)
+          AND NOT (cs.week_type = 2 AND #{weekType} = 1)
+        <if test="excludeId != null">
+          AND cs.id != #{excludeId}
+        </if>
+    </select>
+
+    <select id="selectWeekView" resultType="com.scbrbackend.model.vo.WeekScheduleItemVO">
+        SELECT
+            cs.id,
+            cs.weekday,
+            
+            cs.start_section_id AS startSectionId,
+            ss.section_no       AS startSectionNo,
+            ss.section_name     AS startSectionName,
+            ss.start_time       AS startSectionTime,
+            
+            cs.end_section_id   AS endSectionId,
+            se.section_no       AS endSectionNo,
+            se.section_name     AS endSectionName,
+            se.end_time         AS endSectionTime,
+            
+            c.name              AS courseName,
+            t.name              AS teacherName,
+            cr.name             AS classroomName,
+            
+            cs.start_week       AS startWeek,
+            cs.end_week         AS endWeek,
+            cs.week_type        AS weekType,
+            cs.student_count    AS studentCount,
+            cs.remark
+        FROM course_schedule cs
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN teacher t ON cs.teacher_id = t.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        LEFT JOIN sys_section_time se ON cs.end_section_id = se.id
+        WHERE cs.academic_year = #{academicYear}
+          AND cs.semester = #{semester}
+        <if test="teacherId != null">
+          AND cs.teacher_id = #{teacherId}
+        </if>
+        <if test="classroomId != null">
+          AND cs.classroom_id = #{classroomId}
+        </if>
+        ORDER BY cs.weekday ASC, ss.section_no ASC
+    </select>
+
+    <!-- ======================== 排课预填信息查询 ======================== -->
+    <select id="selectAnalysisInitData" resultType="com.scbrbackend.model.vo.ScheduleAnalysisInitVO">
+        SELECT
+            cs.id              AS scheduleId,
+            cs.academic_year   AS academicYear,
+            cs.semester        AS semester,
+            cs.course_id       AS courseId,
+            c.name             AS courseName,
+            cs.teacher_id      AS teacherId,
+            t.name             AS teacherName,
+            cs.classroom_id    AS classroomId,
+            cr.name            AS classroomName,
+            cs.weekday         AS weekday,
+            cs.start_section_id AS startSectionId,
+            ss.section_no      AS startSectionNo,
+            ss.start_time      AS startSectionTime,
+            cs.end_section_id  AS endSectionId,
+            se.section_no      AS endSectionNo,
+            se.end_time        AS endSectionTime,
+            cs.start_week      AS startWeek,
+            cs.end_week        AS endWeek,
+            cs.week_type       AS weekType,
+            cs.student_count   AS studentCount,
+            cs.remark          AS remark
+        FROM course_schedule cs
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN teacher t ON cs.teacher_id = t.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN sys_section_time ss ON cs.start_section_id = ss.id
+        LEFT JOIN sys_section_time se ON cs.end_section_id = se.id
+        WHERE cs.id = #{scheduleId}
+    </select>
+
+</mapper>

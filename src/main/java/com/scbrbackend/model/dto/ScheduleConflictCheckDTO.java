@@ -2,28 +2,17 @@ package com.scbrbackend.model.dto;
 
 import lombok.Data;
 
-/**
- * 排课新增/编辑请求 DTO（V6.1 规则型排课）
- */
 @Data
-public class ScheduleRequestDTO {
+public class ScheduleConflictCheckDTO {
     private Long id;
-
     private String academicYear;
     private Integer semester;
-
-    private Long courseId;
     private Long teacherId;
     private Long classroomId;
-
     private Integer weekday;
     private Long startSectionId;
     private Long endSectionId;
-
     private Integer startWeek;
     private Integer endWeek;
     private Integer weekType;
-
-    private Integer studentCount;
-    private String remark;
 }
