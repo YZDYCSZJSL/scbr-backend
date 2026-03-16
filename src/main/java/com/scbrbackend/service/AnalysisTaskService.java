@@ -13,10 +13,10 @@ import com.scbrbackend.model.entity.AnalysisTask;
 import com.scbrbackend.model.entity.SysFile;
 import com.scbrbackend.model.entity.Teacher;
 import com.scbrbackend.model.entity.CourseSchedule;
+import com.scbrbackend.model.entity.AnalysisTaskLog;
 import com.scbrbackend.model.dto.AnalysisTaskStatusDTO;
 import com.scbrbackend.model.dto.CreateAnalysisTaskResponseDTO;
 import com.scbrbackend.model.dto.ModelFileCallbackDTO;
-import com.scbrbackend.service.ModelCallbackService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
@@ -39,18 +39,15 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Collections;
 
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scbrbackend.mapper.AnalysisDetailMapper;
+import com.scbrbackend.mapper.AnalysisTaskLogMapper;
 import com.scbrbackend.model.dto.AnalysisTaskDetailDTO;
 import com.scbrbackend.model.entity.AnalysisDetail;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-
 
 @Service
 @Slf4j
@@ -75,6 +72,9 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
     private AnalysisDetailMapper analysisDetailMapper;
 
     @Autowired
+    private AnalysisTaskLogMapper analysisTaskLogMapper;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Value("${scbrbackend.server-address:http://127.0.0.1:8080}")
@@ -88,8 +88,8 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
 
     @Transactional
     public Result<CreateAnalysisTaskResponseDTO> createAnalysisTask(MultipartFile file, String fileName,
-                                                                    Long scheduleId,
-                                                                    Integer streamType, String token) {
+            Long scheduleId,
+            Integer streamType, String token) {
         // 1. 获取教师身份信息
         if (token == null || !token.startsWith("mock_jwt_token_")) {
             throw new BusinessException(401, "未授权的访问！");
@@ -158,9 +158,38 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
         analysisTask.setMediaType(mediaType);
 
         analysisTask.setStatus(0); // 0-排队中/待处理
+        analysisTask.setRetryCount(0);
         analysisTask.setCreatedAt(LocalDateTime.now());
         analysisTask.setUpdatedAt(LocalDateTime.now());
         this.baseMapper.insert(analysisTask);
+
+        // 记录 CREATED 日志
+        AnalysisTaskLog createdLog = new AnalysisTaskLog();
+        createdLog.setTaskId(analysisTask.getId());
+        createdLog.setStage("CREATED");
+        createdLog.setStatus(1);
+        createdLog.setMessage("任务创建成功");
+        Map<String, Object> createDetail = new HashMap<>();
+        createDetail.put("mediaType", mediaType);
+        createDetail.put("scheduleId", scheduleId);
+        createdLog.setDetailJson(JSON.toJSONString(createDetail));
+        createdLog.setCreatedAt(LocalDateTime.now());
+        analysisTaskLogMapper.insert(createdLog);
+
+        // 如果有上传文件，记录 UPLOADED 日志
+        if (sysFile.getId() != null) {
+            AnalysisTaskLog uploadLog = new AnalysisTaskLog();
+            uploadLog.setTaskId(analysisTask.getId());
+            uploadLog.setStage("UPLOADED");
+            uploadLog.setStatus(1);
+            uploadLog.setMessage("文件上传并写入 sys_file 成功");
+            Map<String, Object> upDetail = new HashMap<>();
+            upDetail.put("fileId", sysFile.getId());
+            upDetail.put("fileName", fileName);
+            uploadLog.setDetailJson(JSON.toJSONString(upDetail));
+            uploadLog.setCreatedAt(LocalDateTime.now());
+            analysisTaskLogMapper.insert(uploadLog);
+        }
 
         // 5. 立即用 @Async 开启异步 AI 推理调度 (主线程不阻塞)
         // 需要使用 spring 代理对象调用才能让 @Async 拦截器生效，真实项目中建议拆分服务，此处简写：
@@ -191,8 +220,20 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
 
         // 更新为分析中
         task.setStatus(1);
+        task.setStartTime(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         this.updateById(task);
+
+        AnalysisTaskLog runLog = new AnalysisTaskLog();
+        runLog.setTaskId(taskId);
+        runLog.setStage("RUNNING");
+        runLog.setStatus(1);
+        runLog.setMessage("任务开始进入分析中");
+        Map<String, Object> runDetail = new HashMap<>();
+        runDetail.put("startTime", task.getStartTime().toString());
+        runLog.setDetailJson(JSON.toJSONString(runDetail));
+        runLog.setCreatedAt(LocalDateTime.now());
+        analysisTaskLogMapper.insert(runLog);
 
         try {
             SysFile sysFile = sysFileMapper.selectById(task.getFileId());
@@ -256,6 +297,22 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
             // 视频：异步 accepted，等待 Python 回调
             // =========================
             if (Integer.valueOf(2).equals(task.getMediaType())) {
+                AnalysisTaskLog accLog = new AnalysisTaskLog();
+                accLog.setTaskId(taskId);
+                accLog.setStage("MODEL_ACCEPTED");
+                accLog.setStatus(1);
+                accLog.setMessage("模型服务已受理识别请求");
+                accLog.setCreatedAt(LocalDateTime.now());
+                analysisTaskLogMapper.insert(accLog);
+
+                AnalysisTaskLog waitLog = new AnalysisTaskLog();
+                waitLog.setTaskId(taskId);
+                waitLog.setStage("WAITING_CALLBACK");
+                waitLog.setStatus(1);
+                waitLog.setMessage("等待模型服务回调");
+                waitLog.setCreatedAt(LocalDateTime.now());
+                analysisTaskLogMapper.insert(waitLog);
+
                 log.info("视频任务已被模型端受理，等待异步回调，taskId = {}", taskId);
                 return;
             }
@@ -408,8 +465,17 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
         AnalysisTask task = this.getById(taskId);
         if (task != null && task.getStatus() != 2 && task.getStatus() != 3) {
             task.setStatus(2); // 标记为结束（成功）
+            task.setFinishTime(LocalDateTime.now());
             task.setUpdatedAt(LocalDateTime.now());
             this.updateById(task);
+
+            AnalysisTaskLog stopLog = new AnalysisTaskLog();
+            stopLog.setTaskId(taskId);
+            stopLog.setStage("STOPPED");
+            stopLog.setStatus(1);
+            stopLog.setMessage("任务被主动停止");
+            stopLog.setCreatedAt(LocalDateTime.now());
+            analysisTaskLogMapper.insert(stopLog);
         }
     }
 
@@ -431,10 +497,9 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
         List<AnalysisDetail> detailList = analysisDetailMapper.selectList(
                 new LambdaQueryWrapper<AnalysisDetail>()
                         .eq(AnalysisDetail::getTaskId, taskId)
-                        .eq(AnalysisDetail::getRecordType, 0)   // 只取文件流全量明细
+                        .eq(AnalysisDetail::getRecordType, 0) // 只取文件流全量明细
                         .orderByAsc(AnalysisDetail::getFrameTime)
-                        .orderByAsc(AnalysisDetail::getId)
-        );
+                        .orderByAsc(AnalysisDetail::getId));
 
         List<AnalysisTaskDetailDTO.DetailItem> resultDetails = new ArrayList<>();
         if (detailList != null && !detailList.isEmpty()) {
@@ -449,8 +514,7 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
                         boxes = objectMapper.readValue(
                                 detail.getBoundingBoxes(),
                                 new TypeReference<List<List<Double>>>() {
-                                }
-                        );
+                                });
                     } catch (Exception e) {
                         log.warn("解析 boundingBoxes 失败, detailId={}, taskId={}", detail.getId(), taskId, e);
                     }
@@ -464,7 +528,8 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
                 item.setCount(finalCount);
 
                 if (!boxes.isEmpty() && rawCount != boxes.size()) {
-                    log.warn("返回前端时发现 count 与 boundingBoxes 数量不一致，已按 box 数量返回。detailId={}, taskId={}, rawCount={}, boxCount={}",
+                    log.warn(
+                            "返回前端时发现 count 与 boundingBoxes 数量不一致，已按 box 数量返回。detailId={}, taskId={}, rawCount={}, boxCount={}",
                             detail.getId(), taskId, rawCount, boxes.size());
                 }
 
@@ -532,6 +597,50 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
     }
 
     /**
+     * 简化错误信息，转换为简短、可读的中文失败原因
+     */
+    public static String simplifyErrorMessage(Exception e) {
+        if (e == null)
+            return "未知系统异常";
+        return simplifyErrorMessage(e.getMessage() != null ? e.getMessage() : e.toString());
+    }
+
+    public static String simplifyErrorMessage(String msg) {
+        if (msg == null || msg.trim().isEmpty()) {
+            return "未知系统异常";
+        }
+
+        String lowerMsg = msg.toLowerCase();
+        if (lowerMsg.contains("404 not found")) {
+            return "模型服务接口不存在（404），请检查模型服务地址或接口路径是否正确";
+        }
+        if (lowerMsg.contains("500 internal server error")) {
+            return "模型服务内部异常（500），请检查模型端日志";
+        }
+        if (lowerMsg.contains("read timed out") || lowerMsg.contains("connect timed out")
+                || lowerMsg.contains("timed out")) {
+            return "模型服务请求超时，请检查模型服务状态或网络连通性";
+        }
+        if (lowerMsg.contains("connection refused")) {
+            return "无法连接模型服务，请确认模型服务是否已启动";
+        }
+        if (lowerMsg.contains("ssl") || lowerMsg.contains("certificate")) {
+            return "模型服务 HTTPS/证书异常，请检查服务证书配置";
+        }
+        if (lowerMsg.contains("<html") || lowerMsg.contains("<!doctype")) {
+            return "模型服务返回了错误页面，请检查请求地址是否正确";
+        }
+
+        // 其他情况：去掉 HTML 标签，压缩多余空白，截断
+        String simplified = msg.replaceAll("<[^>]+>", " ");
+        simplified = simplified.replaceAll("\\s+", " ").trim();
+        if (simplified.length() > 120) {
+            simplified = simplified.substring(0, 117) + "...";
+        }
+        return simplified;
+    }
+
+    /**
      * 统一标记任务失败
      */
     private void markTaskFailed(AnalysisTask task, String reason) {
@@ -540,7 +649,30 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
         }
         log.error("AI 分析任务失败，taskId = {}，原因 = {}", task.getId(), reason);
         task.setStatus(3);
+
+        String simplifiedReason = simplifyErrorMessage(reason);
+        task.setFailReason(simplifiedReason);
+        task.setFinishTime(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         this.updateById(task);
+
+        AnalysisTaskLog failLog = new AnalysisTaskLog();
+        failLog.setTaskId(task.getId());
+        failLog.setStage("FAILED");
+        failLog.setStatus(0);
+        failLog.setMessage(simplifiedReason);
+
+        try {
+            Map<String, Object> detailMap = new HashMap<>();
+            detailMap.put("originalError", reason);
+            failLog.setDetailJson(objectMapper.writeValueAsString(detailMap));
+        } catch (Exception e) {
+            log.warn("序列化原始错误日志失败: {}", e.getMessage());
+            // 降级容错
+            failLog.setDetailJson("{\"originalError\":\"序列化失败\"}");
+        }
+
+        failLog.setCreatedAt(LocalDateTime.now());
+        analysisTaskLogMapper.insert(failLog);
     }
 }

@@ -24,6 +24,13 @@ public class AnalysisTask {
     private Integer status; // 0-排队中, 1-分析中, 2-成功, 3-失败
     private Integer attendanceCount;
     private BigDecimal totalScore;
+    
+    // Task Center 增强字段
+    private LocalDateTime startTime;
+    private LocalDateTime finishTime;
+    private String failReason;
+    private Integer retryCount;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

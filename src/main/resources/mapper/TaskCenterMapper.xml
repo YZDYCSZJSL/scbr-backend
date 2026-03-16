@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.scbrbackend.mapper.TaskCenterMapper">
+
+    <select id="selectTaskPage" resultType="com.scbrbackend.model.dto.TaskCenterRecordDTO">
+        SELECT
+            t.id,
+            c.name AS courseName,
+            cr.name AS classroomName,
+            th.name AS teacherName,
+            t.media_type AS mediaType,
+            t.status,
+            t.attendance_count AS attendanceCount,
+            t.total_score AS totalScore,
+            t.retry_count AS retryCount,
+            t.fail_reason AS failReason,
+            t.created_at AS createdAt,
+            t.start_time AS startTime,
+            t.finish_time AS finishTime,
+            TIMESTAMPDIFF(SECOND, t.start_time, t.finish_time) AS durationSeconds
+        FROM analysis_task t
+        LEFT JOIN course_schedule cs ON t.schedule_id = cs.id
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN teacher th ON t.teacher_id = th.id
+        <where>
+            <if test="query.teacherId != null">
+                AND t.teacher_id = #{query.teacherId}
+            </if>
+            <if test="query.status != null">
+                AND t.status = #{query.status}
+            </if>
+            <if test="query.mediaType != null">
+                AND t.media_type = #{query.mediaType}
+            </if>
+            <if test="query.keyword != null and query.keyword != ''">
+                AND (c.name LIKE CONCAT('%', #{query.keyword}, '%')
+                     OR th.name LIKE CONCAT('%', #{query.keyword}, '%')
+                     OR cr.name LIKE CONCAT('%', #{query.keyword}, '%'))
+            </if>
+            <if test="query.startDate != null and query.startDate != ''">
+                AND DATE(t.created_at) &gt;= #{query.startDate}
+            </if>
+            <if test="query.endDate != null and query.endDate != ''">
+                AND DATE(t.created_at) &lt;= #{query.endDate}
+            </if>
+        </where>
+        ORDER BY t.created_at DESC
+    </select>
+
+    <select id="selectTaskDetail" resultType="com.scbrbackend.model.dto.TaskCenterDetailDTO">
+        SELECT
+            t.id,
+            c.name AS courseName,
+            th.name AS teacherName,
+            cr.name AS classroomName,
+            t.schedule_id AS scheduleId,
+            t.media_type AS mediaType,
+            t.status,
+            t.file_id AS fileId,
+            f.original_name AS fileName,
+            f.file_url AS fileUrl,
+            t.attendance_count AS attendanceCount,
+            t.total_score AS totalScore,
+            t.retry_count AS retryCount,
+            t.fail_reason AS failReason,
+            t.created_at AS createdAt,
+            t.start_time AS startTime,
+            t.finish_time AS finishTime,
+            TIMESTAMPDIFF(SECOND, t.start_time, t.finish_time) AS durationSeconds
+        FROM analysis_task t
+        LEFT JOIN course_schedule cs ON t.schedule_id = cs.id
+        LEFT JOIN course c ON cs.course_id = c.id
+        LEFT JOIN classroom cr ON cs.classroom_id = cr.id
+        LEFT JOIN teacher th ON t.teacher_id = th.id
+        LEFT JOIN sys_file f ON t.file_id = f.id
+        WHERE t.id = #{taskId}
+        <if test="teacherId != null">
+            AND t.teacher_id = #{teacherId}
+        </if>
+    </select>
+</mapper>

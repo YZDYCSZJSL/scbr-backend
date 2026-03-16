@@ -22,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.scbrbackend.mapper.CourseScheduleMapper;
 import com.scbrbackend.model.entity.CourseSchedule;
+import com.scbrbackend.mapper.AnalysisTaskLogMapper;
+import com.scbrbackend.model.entity.AnalysisTaskLog;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -46,6 +48,9 @@ public class ModelCallbackService {
 
     @Autowired
     private CourseScheduleMapper courseScheduleMapper;
+
+    @Autowired
+    private AnalysisTaskLogMapper analysisTaskLogMapper;
 
     @Transactional
     public void handleSuccess(ModelFileCallbackDTO callbackDTO) {
@@ -94,9 +99,24 @@ public class ModelCallbackService {
         );
 
         task.setStatus(2);
+        task.setFinishTime(LocalDateTime.now());
         task.setTotalScore(new BigDecimal(String.valueOf(totalScore)));
         task.setUpdatedAt(LocalDateTime.now());
         analysisTaskMapper.updateById(task);
+
+        AnalysisTaskLog finLog = new AnalysisTaskLog();
+        finLog.setTaskId(taskId);
+        finLog.setStage("FINISHED");
+        finLog.setStatus(1);
+        finLog.setMessage("任务执行成功并完成结果回写");
+        try {
+            Map<String, Object> finDetail = new HashMap<>();
+            finDetail.put("attendanceCount", task.getAttendanceCount());
+            finDetail.put("totalScore", totalScore);
+            finLog.setDetailJson(objectMapper.writeValueAsString(finDetail));
+        } catch (Exception e) {}
+        finLog.setCreatedAt(LocalDateTime.now());
+        analysisTaskLogMapper.insert(finLog);
     }
 
     private List<ModelFileCallbackDTO.Detail> normalizeDetails(List<ModelFileCallbackDTO.Detail> details) {
@@ -138,8 +158,35 @@ public class ModelCallbackService {
         AnalysisTask task = analysisTaskMapper.selectById(taskId);
         if (task != null) {
             task.setStatus(3); // 3-失败
+            task.setFinishTime(LocalDateTime.now()); // 补充
+            String errReason = callbackDTO.getErrorMessage();
+            if (errReason == null || errReason.isEmpty()) {
+                errReason = "模型服务回调通知失败";
+            }
+            
+            String simplifiedReason = AnalysisTaskService.simplifyErrorMessage(errReason);
+            task.setFailReason(simplifiedReason); // 补充
             task.setUpdatedAt(LocalDateTime.now());
             analysisTaskMapper.updateById(task);
+
+            AnalysisTaskLog failLog = new AnalysisTaskLog();
+            failLog.setTaskId(taskId);
+            failLog.setStage("FAILED");
+            failLog.setStatus(0);
+            failLog.setMessage(simplifiedReason);
+            
+            try {
+                Map<String, Object> detailMap = new HashMap<>();
+                detailMap.put("originalError", errReason);
+                failLog.setDetailJson(objectMapper.writeValueAsString(detailMap));
+            } catch (Exception e) {
+                log.warn("序列化原始错误失败: {}", e.getMessage());
+                // 降级容错
+                failLog.setDetailJson("{\"originalError\":\"序列化失败\"}");
+            }
+            
+            failLog.setCreatedAt(LocalDateTime.now());
+            analysisTaskLogMapper.insert(failLog);
         }
     }
 
