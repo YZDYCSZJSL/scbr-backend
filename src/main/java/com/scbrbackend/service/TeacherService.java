@@ -95,6 +95,7 @@ public class TeacherService extends ServiceImpl<TeacherMapper, Teacher> {
         teacher.setUpdatedAt(LocalDateTime.now());
 
         this.save(teacher);
+        requestDTO.setId(teacher.getId());
         return Result.success("新增教师成功！", null); // 或者返回 { "id": xxx }
     }
 

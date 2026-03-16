@@ -70,12 +70,8 @@ public class SysWeightConfigService extends ServiceImpl<SysWeightConfigMapper, S
 
             this.save(config);
 
-            // 如果导入时指定激活，触发独占激活机制
-            if (config.getIsActive() == 1) {
-                activateConfig(config.getId());
-            }
-
-            return Result.success("成功载入配置方案", null);
+            // 前端仍然可以接收原有的 Result<String>，为不破坏兼容性，只返回 ID 的 String
+            return Result.success("成功载入配置方案", config.getId().toString());
         } catch (Exception e) {
             e.printStackTrace();
             return Result.error(500, "解析 JSON 失败: " + e.getMessage());
@@ -124,6 +120,7 @@ public class SysWeightConfigService extends ServiceImpl<SysWeightConfigMapper, S
             activateConfig(config.getId());
         }
 
+        requestDTO.setId(config.getId());
         return Result.success("新增保存成功！", null);
     }
 

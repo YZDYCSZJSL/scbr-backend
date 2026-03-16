@@ -71,6 +71,7 @@ public class CourseService extends ServiceImpl<CourseMapper, Course> {
         course.setUpdatedAt(LocalDateTime.now());
 
         this.save(course);
+        requestDTO.setId(course.getId());
         return Result.success("新增课程成功！", null);
     }
 

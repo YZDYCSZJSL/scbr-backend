@@ -72,6 +72,7 @@ public class ClassroomService extends ServiceImpl<ClassroomMapper, Classroom> {
         classroom.setUpdatedAt(LocalDateTime.now());
 
         this.save(classroom);
+        requestDTO.setId(classroom.getId());
         return Result.success("保存成功！", null);
     }
 

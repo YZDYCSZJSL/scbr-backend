@@ -18,8 +18,9 @@ import org.springframework.web.bind.annotation.*;
 public class ReportController {
     private final ReportService reportService;
     private final com.scbrbackend.mapper.TeacherMapper teacherMapper;
+    private final com.scbrbackend.service.LogService logService;
 
-    private Long getFilteredTeacherId(jakarta.servlet.http.HttpServletRequest request) {
+    private com.scbrbackend.model.entity.Teacher getCurrentTeacher(jakarta.servlet.http.HttpServletRequest request) {
         String token = request.getHeader("Authorization");
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
@@ -36,8 +37,10 @@ public class ReportController {
         if (currentTeacher == null) {
             throw new com.scbrbackend.common.exception.BusinessException(401, "无效的用户令牌！");
         }
+        return currentTeacher;
+    }
 
-        // 普通老师：Role == 0, 超级管理员: Role == 1
+    private Long getFilteredTeacherId(com.scbrbackend.model.entity.Teacher currentTeacher) {
         if (currentTeacher.getRole() != null && currentTeacher.getRole() == 1) {
             return null; // 不加条件过滤，全部可看
         }
@@ -47,7 +50,8 @@ public class ReportController {
     @GetMapping("/page")
     public Result<PageResult<ReportPageVO>> getPage(ReportPageQueryDTO query,
             jakarta.servlet.http.HttpServletRequest request) {
-        Long currentTeacherId = getFilteredTeacherId(request);
+        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         IPage<ReportPageVO> pageResult = reportService.getPage(query, currentTeacherId);
         return Result.success(PageResult.from(pageResult));
     }
@@ -55,14 +59,24 @@ public class ReportController {
     @PostMapping("/export")
     public void export(@RequestBody ReportExportDTO dto, HttpServletResponse response,
             jakarta.servlet.http.HttpServletRequest request) {
-        Long currentTeacherId = getFilteredTeacherId(request);
+        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         reportService.exportByIds(dto, response, currentTeacherId);
+        
+        boolean isBatch = dto.getIds() != null && dto.getIds().size() > 1;
+        Long bizId = !isBatch && dto.getIds() != null && !dto.getIds().isEmpty() ? dto.getIds().get(0) : null;
+        
+        String listCountDesc = (dto.getIds() != null && !dto.getIds().isEmpty()) ? "，数量：" + dto.getIds().size() : " (全部)";
+        String operationDesc = isBatch ? ("批量导出报表" + listCountDesc) : "导出课堂分析报表";
+
+        logService.recordOperationLog(currentTeacher.getEmpNo(), currentTeacher.getName(), "课堂分析报告", "EXPORT_REPORT", bizId, operationDesc, 1);
     }
 
     @GetMapping("/{id}/detail")
     public Result<ReportDetailVO> getDetail(@PathVariable("id") Long id,
             jakarta.servlet.http.HttpServletRequest request) {
-        Long currentTeacherId = getFilteredTeacherId(request);
+        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         ReportDetailVO detail = reportService.getDetailById(id, currentTeacherId);
         return Result.success(detail);
     }

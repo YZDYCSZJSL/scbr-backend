@@ -76,6 +76,7 @@ public class CourseScheduleService extends ServiceImpl<CourseScheduleMapper, Cou
         schedule.setUpdatedAt(LocalDateTime.now());
 
         this.saveOrUpdate(schedule);
+        dto.setId(schedule.getId());
         return Result.success("保存成功！数据无冲突。", null);
     }
 

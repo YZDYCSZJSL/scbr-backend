@@ -24,7 +24,7 @@ public class AuthController {
      * 账号密码登录授权
      */
     @PostMapping("/login")
-    public Result<LoginResponseDTO> login(@RequestBody LoginRequestDTO loginRequest) {
-        return authService.login(loginRequest);
+    public Result<LoginResponseDTO> login(@RequestBody LoginRequestDTO loginRequest, jakarta.servlet.http.HttpServletRequest request) {
+        return authService.login(loginRequest, request);
     }
 }

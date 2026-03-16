@@ -23,6 +23,9 @@ public class TaskCenterController {
     @Autowired
     private TeacherMapper teacherMapper;
 
+    @Autowired
+    private com.scbrbackend.service.LogService logService;
+
     private Teacher getCurrentTeacher(String authorization) {
         if (authorization == null || authorization.trim().isEmpty()) {
             throw new BusinessException(401, "未授权的访问！");
@@ -89,7 +92,15 @@ public class TaskCenterController {
             @RequestHeader(value = "Authorization", required = false) String token) {
         Teacher teacher = getCurrentTeacher(token);
         Long teacherId = (teacher.getRole() == null || teacher.getRole() != 1) ? teacher.getId() : null;
-        RetryTaskResponseDTO response = taskCenterService.retryTask(taskId, teacherId);
-        return Result.success("任务已重新加入分析队列，请稍后刷新查看状态！", response);
+        
+        try {
+            RetryTaskResponseDTO response = taskCenterService.retryTask(taskId, teacherId);
+            logService.recordOperationLog(teacher.getEmpNo(), teacher.getName(), "分析任务中心", "RETRY_TASK", taskId, "重试分析任务", 1);
+            return Result.success("任务已重新加入分析队列，请稍后刷新查看状态！", response);
+        } catch (Exception e) {
+            String msg = e instanceof BusinessException ? e.getMessage() : "系统内部异常";
+            logService.recordOperationLog(teacher.getEmpNo(), teacher.getName(), "分析任务中心", "RETRY_TASK", taskId, "重试分析任务失败：" + msg, 0);
+            throw e;
+        }
     }
 }

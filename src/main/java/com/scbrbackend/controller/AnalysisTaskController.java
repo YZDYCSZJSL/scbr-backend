@@ -3,6 +3,7 @@ package com.scbrbackend.controller;
 import com.scbrbackend.common.Result.Result;
 import com.scbrbackend.model.dto.AnalysisTaskDetailDTO;
 import com.scbrbackend.service.AnalysisTaskService;
+import com.scbrbackend.common.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,6 +18,9 @@ public class AnalysisTaskController {
 
     @Autowired
     private AnalysisTaskService analysisTaskService;
+
+    @Autowired
+    private com.scbrbackend.service.LogService logService;
 
     @PostMapping
     public Result<CreateAnalysisTaskResponseDTO> createAnalysisTask(
@@ -55,9 +59,25 @@ public class AnalysisTaskController {
     }
 
     @PutMapping("/{taskId}/stop")
-    public Result<Object> stopTask(@PathVariable("taskId") Long taskId) {
-        analysisTaskService.stopAnalysisTask(taskId);
-        return Result.success("实时分析任务已结束！", null);
+    public Result<Object> stopTask(@PathVariable("taskId") Long taskId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        String token = request.getHeader("Authorization");
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        }
+        String empNo = token != null && token.startsWith("mock_jwt_token_") ? token.substring("mock_jwt_token_".length()) : "unknown";
+        String teacherName = empNo.equals("unknown") ? "未知" : empNo; // Simplification, strictly requires actual name from token but logService only requires not-nulls
+
+        try {
+            analysisTaskService.stopAnalysisTask(taskId);
+            // 此类操作日志虽未独立定义，但建议补充上报
+            logService.recordOperationLog(empNo, teacherName, "课堂分析", "STOP_TASK", taskId, "终止分析任务", 1);
+            return Result.success("实时分析任务已结束！", null);
+        } catch (Exception e) {
+            String msg = e instanceof BusinessException ? ((BusinessException) e).getMessage() : "系统内部异常";
+            logService.recordOperationLog(empNo, teacherName, "课堂分析", "STOP_TASK", taskId, "终止分析任务失败：" + msg, 0);
+            throw e;
+        }
     }
 
 

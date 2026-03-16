@@ -77,6 +77,9 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private LogService logService;
+
     @Value("${scbrbackend.server-address:http://127.0.0.1:8080}")
     private String serverAddress;
 
@@ -201,6 +204,9 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
         CreateAnalysisTaskResponseDTO responseDTO = new CreateAnalysisTaskResponseDTO();
         responseDTO.setTaskId(analysisTask.getId());
         responseDTO.setStatus(0);
+        
+        logService.recordOperationLog(currentTeacher.getEmpNo(), currentTeacher.getName(), "课堂分析", "CREATE_ANALYSIS_TASK", analysisTask.getId(), "教师创建分析任务", 1);
+        
         return Result.success("分析任务创建成功，AI 正在快马加鞭识别中！", responseDTO);
     }
 
