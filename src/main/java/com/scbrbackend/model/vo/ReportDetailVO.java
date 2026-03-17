@@ -19,5 +19,9 @@ public class ReportDetailVO {
     private Integer attendanceCount;
     private String fileUrl;
     
+    private String classTimeText;
+    private Integer studentCount;
+    private Long durationSeconds;
+    
     private List<AnalysisDetailVO> detailList;
 }

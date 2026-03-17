@@ -332,30 +332,7 @@ VALUES
 (2, 'os_lesson_0315.mp4', 'analysis/20260315/os_lesson_0315.mp4', 'https://oss.example.com/analysis/20260315/os_lesson_0315.mp4', 'md5_os_0315', 2, '2026-03-15 09:55:00'),
 (3, 'db_lesson_0316.jpg', 'analysis/20260316/db_lesson_0316.jpg', 'https://oss.example.com/analysis/20260316/db_lesson_0316.jpg', 'md5_db_0316', 3, '2026-03-16 13:59:00');
 
-INSERT INTO `sys_weight_config`
-(`id`, `config_name`, `is_active`, `config_content`, `description`, `created_at`, `updated_at`)
-VALUES
-(1, '默认课堂评分方案', 1,
- JSON_ARRAY(
-   JSON_OBJECT('behaviorType', '正常听课', 'name', '正常听课', 'weight', 5.0),
-   JSON_OBJECT('behaviorType', '书写', 'name', '书写', 'weight', 4.0),
-   JSON_OBJECT('behaviorType', '阅读', 'name', '阅读', 'weight', 4.0),
-   JSON_OBJECT('behaviorType', '举手', 'name', '举手', 'weight', 3.0),
-   JSON_OBJECT('behaviorType', '玩手机', 'name', '玩手机', 'weight', -6.0),
-   JSON_OBJECT('behaviorType', '趴桌', 'name', '趴桌', 'weight', -8.0)
- ),
- '系统默认启用方案', '2026-03-01 12:00:00', '2026-03-01 12:00:00'),
-(2, '严格课堂纪律方案', 0,
- JSON_ARRAY(
-   JSON_OBJECT('behaviorType', '正常听课', 'name', '正常听课', 'weight', 5.0),
-   JSON_OBJECT('behaviorType', '书写', 'name', '书写', 'weight', 4.0),
-   JSON_OBJECT('behaviorType', '阅读', 'name', '阅读', 'weight', 4.0),
-   JSON_OBJECT('behaviorType', '举手', 'name', '举手', 'weight', 3.0),
-   JSON_OBJECT('behaviorType', '玩手机', 'name', '玩手机', 'weight', -10.0),
-   JSON_OBJECT('behaviorType', '趴桌', 'name', '趴桌', 'weight', -12.0)
- ),
- '更强调课堂纪律与异常行为处罚', '2026-03-02 12:00:00', '2026-03-02 12:00:00');
-
+INSERT INTO `sys_weight_config` (`id`, `config_name`, `is_active`, `config_content`, `description`, `created_at`, `updated_at`) VALUES (1, '默认课堂评分方案', 1, '[{\"name\": \"举手回答问题\", \"weight\": 0, \"behaviorType\": \"举手回答问题\"}, {\"name\": \"阅读\", \"weight\": 4, \"behaviorType\": \"阅读\"}, {\"name\": \"趴桌\", \"weight\": -8, \"behaviorType\": \"趴桌\"}, {\"name\": \"起立回答问题\", \"weight\": 0, \"behaviorType\": \"起立回答问题\"}, {\"name\": \"玩手机\", \"weight\": -6, \"behaviorType\": \"玩手机\"}, {\"name\": \"书写\", \"weight\": 4, \"behaviorType\": \"书写\"}, {\"name\": \"正常听课\", \"weight\": 5, \"behaviorType\": \"正常听课\"}]', '系统默认启用方案', '2026-03-01 12:00:00', '2026-03-17 16:23:40');
 INSERT INTO `analysis_task`
 (`id`, `teacher_id`, `classroom_id`, `schedule_id`, `file_id`, `media_type`, `status`,
  `attendance_count`, `total_score`, `start_time`, `finish_time`,

@@ -34,7 +34,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -193,62 +193,76 @@ public class ModelCallbackService {
     public double calculateScore(Long scheduleId,
                                   Integer attendanceCount,
                                   List<ModelFileCallbackDTO.Detail> details) {
-        double baseScore = 100.0;
+        if (scheduleId == null) return 0.0;
+        CourseSchedule schedule = courseScheduleMapper.selectById(scheduleId);
+        int studentCount = (schedule != null && schedule.getStudentCount() != null) ? schedule.getStudentCount() : 0;
+        int aCount = attendanceCount == null ? 0 : attendanceCount;
 
-        if (details == null || details.isEmpty()) {
-            // 即使没有行为明细，也仍然允许按出勤情况扣分
-            double attendancePenalty = calculateAttendancePenalty(scheduleId, attendanceCount);
-            return clampScore(baseScore - attendancePenalty);
+        double attendanceScoreVal = 100.0;
+        if (studentCount > 0) {
+            attendanceScoreVal = Math.min(100.0, (double) aCount / studentCount * 100.0);
         }
 
-        // 1. 获取激活权重配置
         SysWeightConfig activeConfig = sysWeightConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysWeightConfig>().eq(SysWeightConfig::getIsActive, 1));
+        Map<String, Double> weightMap = activeConfig != null ? parseWeightConfig(activeConfig.getConfigContent()) : new HashMap<>();
 
-        if (activeConfig == null || activeConfig.getConfigContent() == null) {
-            log.warn("未找到激活的评分配置，行为得分使用默认满分 100.0");
-            double attendancePenalty = calculateAttendancePenalty(scheduleId, attendanceCount);
-            return clampScore(baseScore - attendancePenalty);
+        Set<Integer> uniqueFrames = new HashSet<>();
+        Map<Integer, Map<String, Integer>> frameSumMap = new HashMap<>();
+
+        if (details != null) {
+            for (ModelFileCallbackDTO.Detail d : details) {
+                if (d == null || d.getBehaviorType() == null) continue;
+                int ft = d.getFrameTime() == null ? 0 : d.getFrameTime();
+                uniqueFrames.add(ft);
+                frameSumMap.putIfAbsent(ft, new HashMap<>());
+                Map<String, Integer> bMap = frameSumMap.get(ft);
+                bMap.put(d.getBehaviorType(), bMap.getOrDefault(d.getBehaviorType(), 0) + (d.getCount() == null ? 0 : d.getCount()));
+            }
         }
 
-        // 2. 解析权重配置
-        Map<String, Double> weightMap = parseWeightConfig(activeConfig.getConfigContent());
-        if (weightMap.isEmpty()) {
-            log.warn("评分配置为空或解析失败，行为得分使用默认满分 100.0");
-            double attendancePenalty = calculateAttendancePenalty(scheduleId, attendanceCount);
-            return clampScore(baseScore - attendancePenalty);
+        Map<String, Double> avgCounts = new HashMap<>();
+        int frameCount = uniqueFrames.isEmpty() ? 1 : uniqueFrames.size();
+        for (Map<String, Integer> bMap : frameSumMap.values()) {
+            for (Map.Entry<String, Integer> e : bMap.entrySet()) {
+                avgCounts.put(e.getKey(), avgCounts.getOrDefault(e.getKey(), 0.0) + e.getValue());
+            }
+        }
+        for (Map.Entry<String, Double> e : avgCounts.entrySet()) {
+            avgCounts.put(e.getKey(), e.getValue() / frameCount);
         }
 
-        // 3. 校验是否为固定7类行为
-        if (!isFixedSevenBehaviorConfig(weightMap)) {
-            log.warn("当前激活的评分配置不是固定7类行为配置，config={}", activeConfig.getConfigContent());
-            // 这里仍然继续算，避免线上直接不可用
-        }
+        double wFocus1 = weightMap.getOrDefault("正常听课", 0.0);
+        double wFocus2 = weightMap.getOrDefault("阅读", 0.0);
+        double wFocus3 = weightMap.getOrDefault("书写", 0.0);
+        double wFocus4 = weightMap.getOrDefault("玩手机", 0.0);
+        double wFocus5 = weightMap.getOrDefault("趴桌", 0.0);
+        boolean focusAllZero = (wFocus1 == 0 && wFocus2 == 0 && wFocus3 == 0 && wFocus4 == 0 && wFocus5 == 0);
+        double focusImpact = avgCounts.getOrDefault("正常听课", 0.0) * wFocus1 +
+                avgCounts.getOrDefault("阅读", 0.0) * wFocus2 +
+                avgCounts.getOrDefault("书写", 0.0) * wFocus3 +
+                avgCounts.getOrDefault("玩手机", 0.0) * wFocus4 +
+                avgCounts.getOrDefault("趴桌", 0.0) * wFocus5;
+        double focusScoreVal = focusAllZero ? 100.0 : clampScore(100.0 + focusImpact);
 
-        // 4. 先算行为得分
-        Set<Integer> frameTimes = details.stream()
-                .map(d -> d.getFrameTime() == null ? 0 : d.getFrameTime())
-                .collect(Collectors.toSet());
+        double wInt1 = weightMap.getOrDefault("举手回答问题", weightMap.getOrDefault("举手", 0.0));
+        double wInt2 = weightMap.getOrDefault("起立回答问题", weightMap.getOrDefault("起立", 0.0));
+        boolean intAllZero = (wInt1 == 0 && wInt2 == 0);
+        double intImpact = avgCounts.getOrDefault("举手回答问题", avgCounts.getOrDefault("举手", 0.0)) * wInt1 +
+                avgCounts.getOrDefault("起立回答问题", avgCounts.getOrDefault("起立", 0.0)) * wInt2;
+        double interactionScoreVal = intAllZero ? 100.0 : clampScore(0.0 + intImpact);
 
-        double behaviorScore;
-        if (frameTimes.size() <= 1) {
-            // 图片 / 单帧
-            behaviorScore = calculateImageScore(details, weightMap, baseScore);
-        } else {
-            // 视频
-            behaviorScore = calculateVideoScore(details, weightMap, baseScore);
-        }
+        boolean discAllZero = (wFocus4 == 0 && wFocus5 == 0);
+        double discImpact = avgCounts.getOrDefault("玩手机", 0.0) * wFocus4 +
+                avgCounts.getOrDefault("趴桌", 0.0) * wFocus5;
+        double disciplineScoreVal = discAllZero ? 100.0 : clampScore(100.0 + discImpact);
 
-        // 5. 再算出勤扣分
-        double attendancePenalty = calculateAttendancePenalty(scheduleId, attendanceCount);
+        double totalScoreVal = 0.25 * attendanceScoreVal +
+                0.35 * focusScoreVal +
+                0.15 * interactionScoreVal +
+                0.25 * disciplineScoreVal;
 
-        // 6. 最终总分 = 行为得分 - 出勤扣分
-        double finalScore = behaviorScore - attendancePenalty;
-
-        log.info("总分计算完成：scheduleId={}, attendanceCount={}, behaviorScore={}, attendancePenalty={}, finalScore={}",
-                scheduleId, attendanceCount, behaviorScore, attendancePenalty, finalScore);
-
-        return clampScore(finalScore);
+        return clampScore(totalScoreVal);
     }
 
     /**
@@ -294,138 +308,6 @@ public class ModelCallbackService {
         }
 
         return weightMap;
-    }
-
-    /**
-     * 校验是否为固定7类
-     */
-    private boolean isFixedSevenBehaviorConfig(Map<String, Double> weightMap) {
-        Set<String> fixedTypes = new HashSet<>();
-        fixedTypes.add("举手回答问题");
-        fixedTypes.add("阅读");
-        fixedTypes.add("趴桌");
-        fixedTypes.add("起立回答问题");
-        fixedTypes.add("玩手机");
-        fixedTypes.add("书写");
-        fixedTypes.add("正常听课");
-
-        // 只看固定行为是否齐全
-        return weightMap.keySet().containsAll(fixedTypes);
-    }
-
-    /**
-     * 图片/单帧评分
-     */
-    private double calculateImageScore(List<ModelFileCallbackDTO.Detail> details,
-                                       Map<String, Double> weightMap,
-                                       double baseScore) {
-        double totalScore = baseScore;
-
-        for (ModelFileCallbackDTO.Detail d : details) {
-            if (d == null || d.getBehaviorType() == null || d.getCount() == null) {
-                continue;
-            }
-
-            Double weight = weightMap.get(d.getBehaviorType());
-            if (weight != null) {
-                totalScore += weight * d.getCount();
-            }
-        }
-
-        log.info("图片/单帧评分完成，baseScore={}, finalScore={}", baseScore, totalScore);
-        return totalScore;
-    }
-
-    /**
-     * 视频评分：按行为平均人数
-     */
-    private double calculateVideoScore(List<ModelFileCallbackDTO.Detail> details,
-                                       Map<String, Double> weightMap,
-                                       double baseScore) {
-        double totalScore = baseScore;
-
-        // behaviorType -> counts
-        Map<String, List<Integer>> groupedCounts = new HashMap<>();
-
-        for (ModelFileCallbackDTO.Detail d : details) {
-            if (d == null || d.getBehaviorType() == null || d.getCount() == null) {
-                continue;
-            }
-
-            groupedCounts
-                    .computeIfAbsent(d.getBehaviorType(), k -> new ArrayList<>())
-                    .add(d.getCount());
-        }
-
-        for (Map.Entry<String, List<Integer>> entry : groupedCounts.entrySet()) {
-            String behaviorType = entry.getKey();
-            List<Integer> counts = entry.getValue();
-
-            Double weight = weightMap.get(behaviorType);
-            if (weight == null || counts == null || counts.isEmpty()) {
-                continue;
-            }
-
-            double avgCount = counts.stream()
-                    .mapToInt(Integer::intValue)
-                    .average()
-                    .orElse(0.0);
-
-            totalScore += weight * avgCount;
-
-            log.info("视频评分项：behaviorType={}, weight={}, avgCount={}, partialScore={}",
-                    behaviorType, weight, avgCount, weight * avgCount);
-        }
-
-        log.info("视频评分完成，baseScore={}, finalScore={}", baseScore, totalScore);
-        return totalScore;
-    }
-
-    /**
-     * 出勤扣分：后端固定规则，不通过前端配置
-     *
-     * 扣分规则：
-     * - 缺勤率 <= 5%   : 扣 0 分
-     * - 5% < 缺勤率 <= 10%  : 扣 2 分
-     * - 10% < 缺勤率 <= 20% : 扣 5 分
-     * - 20% < 缺勤率 <= 30% : 扣 10 分
-     * - 缺勤率 > 30%  : 扣 20 分
-     */
-    private double calculateAttendancePenalty(Long scheduleId, Integer attendanceCount) {
-        if (scheduleId == null || attendanceCount == null) {
-            log.warn("无法计算出勤扣分，scheduleId 或 attendanceCount 为空，attendancePenalty=0");
-            return 0.0;
-        }
-
-        CourseSchedule schedule = courseScheduleMapper.selectById(scheduleId);
-        if (schedule == null || schedule.getStudentCount() == null || schedule.getStudentCount() <= 0) {
-            log.warn("无法计算出勤扣分，未找到有效的应到人数，scheduleId={}, attendancePenalty=0", scheduleId);
-            return 0.0;
-        }
-
-        int expectedCount = schedule.getStudentCount();
-        int actualCount = Math.max(attendanceCount, 0);
-
-        int absentCount = Math.max(expectedCount - actualCount, 0);
-        double absenceRate = (double) absentCount / expectedCount;
-
-        double penalty;
-        if (absenceRate <= 0.05) {
-            penalty = 0.0;
-        } else if (absenceRate <= 0.10) {
-            penalty = 2.0;
-        } else if (absenceRate <= 0.20) {
-            penalty = 5.0;
-        } else if (absenceRate <= 0.30) {
-            penalty = 10.0;
-        } else {
-            penalty = 20.0;
-        }
-
-        log.info("出勤扣分计算：scheduleId={}, expectedCount={}, actualCount={}, absentCount={}, absenceRate={}, penalty={}",
-                scheduleId, expectedCount, actualCount, absentCount, absenceRate, penalty);
-
-        return penalty;
     }
 
     /**

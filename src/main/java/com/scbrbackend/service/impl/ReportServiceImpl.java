@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -36,7 +38,126 @@ public class ReportServiceImpl implements ReportService {
     private final com.scbrbackend.service.AnalysisReportService analysisReportService;
     private final com.scbrbackend.mapper.AnalysisTaskMapper analysisTaskMapper;
     private final com.scbrbackend.mapper.CourseScheduleMapper courseScheduleMapper;
+    private final com.scbrbackend.mapper.SysWeightConfigMapper sysWeightConfigMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private Map<String, Double> parseWeightConfig(String content) {
+        Map<String, Double> weightMap = new java.util.HashMap<>();
+        if (content == null || content.isEmpty()) return weightMap;
+        try {
+            JsonNode root = objectMapper.readTree(content);
+            if (root.isArray()) {
+                for (JsonNode node : root) {
+                    if (node.has("behaviorType") && node.has("weight")) {
+                        weightMap.put(node.get("behaviorType").asText().trim(), node.get("weight").asDouble());
+                    }
+                }
+            } else if (root.isObject()) {
+                weightMap = objectMapper.readValue(content, new TypeReference<Map<String, Double>>() {});
+            }
+        } catch (Exception e) {}
+        return weightMap;
+    }
+
+    private double getW(Map<String, Double> weightMap, String key) {
+        return weightMap.getOrDefault(key, 0.0);
+    }
+
+    private double clamp(double val, double min, double max) {
+        return Math.max(min, Math.min(max, val));
+    }
+
+    private String buildSummaryText(com.scbrbackend.model.entity.AnalysisReport report) {
+        if (report == null) return "暂无评估摘要。";
+
+        double totalScore = report.getTotalScore() != null ? report.getTotalScore().doubleValue() : 0.0;
+        double attendanceScore = report.getAttendanceScore() != null ? report.getAttendanceScore().doubleValue() : 0.0;
+        double focusScore = report.getFocusScore() != null ? report.getFocusScore().doubleValue() : 0.0;
+        double interactionScore = report.getInteractionScore() != null ? report.getInteractionScore().doubleValue() : 0.0;
+        double disciplineScore = report.getDisciplineScore() != null ? report.getDisciplineScore().doubleValue() : 0.0;
+        String reportLevel = report.getReportLevel() != null ? report.getReportLevel() : "一般";
+
+        StringBuilder sb = new StringBuilder();
+
+        // 1. 总评
+        sb.append(String.format("本节课综合评分为 %.1f 分，评估等级为“%s”。", totalScore, reportLevel));
+
+        // 2. 出勤情况
+        if (attendanceScore >= 90) {
+            sb.append("课堂出勤情况良好，学生到课率较高。");
+        } else if (attendanceScore >= 80) {
+            sb.append("课堂出勤情况表现良好，基本按时到课。");
+        } else if (attendanceScore >= 70) {
+            sb.append("课堂出勤情况基本正常，但仍存在一定缺勤现象。");
+        } else {
+            sb.append("课堂出勤情况较弱，缺勤问题较明显。");
+        }
+
+        // 3. 专注情况
+        if (focusScore >= 90) {
+            sb.append("学生整体专注度较高，课堂学习状态很好。");
+        } else if (focusScore >= 80) {
+            sb.append("学生专注度表现良好，多数能跟上教学节奏。");
+        } else if (focusScore >= 70) {
+            sb.append("学生专注度一般，部分时段存在分心现象。");
+        } else {
+            sb.append("学生专注度偏低，分心或不良学习行为较明显。");
+        }
+
+        // 4. 互动情况
+        if (interactionScore >= 90) {
+            sb.append("课堂互动十分积极，学生参与度很高。");
+        } else if (interactionScore >= 80) {
+            sb.append("课堂互动较为积极，学生参与度较高。");
+        } else if (interactionScore >= 70) {
+            sb.append("课堂互动一般，个别学生能主动参与。");
+        } else {
+            sb.append("课堂互动偏弱，学生主动参与程度不足。");
+        }
+
+        // 5. 纪律情况
+        if (disciplineScore >= 90) {
+            sb.append("课堂纪律总体非常优秀，无异常行为。");
+        } else if (disciplineScore >= 80) {
+            sb.append("课堂纪律总体较好，异常行为极少。");
+        } else if (disciplineScore >= 70) {
+            sb.append("课堂纪律基本可控，偶尔出现违纪行为。");
+        } else {
+            sb.append("课堂纪律情况较弱，异常行为较明显，需重点关注。");
+        }
+
+        return sb.toString();
+    }
+
+    private String buildSuggestionText(com.scbrbackend.model.entity.AnalysisReport report) {
+        if (report == null) return "暂无建议。";
+
+        double attendanceScore = report.getAttendanceScore() != null ? report.getAttendanceScore().doubleValue() : 0.0;
+        double focusScore = report.getFocusScore() != null ? report.getFocusScore().doubleValue() : 0.0;
+        double interactionScore = report.getInteractionScore() != null ? report.getInteractionScore().doubleValue() : 0.0;
+        double disciplineScore = report.getDisciplineScore() != null ? report.getDisciplineScore().doubleValue() : 0.0;
+
+        java.util.List<String> suggestions = new java.util.ArrayList<>();
+
+        if (attendanceScore < 85) {
+            suggestions.add("出勤管理：建议加强考勤管理，重点关注缺勤现象并了解缺勤原因。");
+        }
+        if (focusScore < 80) {
+            suggestions.add("专注度提升：建议优化课堂节奏，适时穿插生动案例或练习以提升学生专注度。");
+        }
+        if (interactionScore < 75) {
+            suggestions.add("课堂互动：建议增加课堂提问、小组讨论或互动设计，激发学生的参与热情。");
+        }
+        if (disciplineScore < 80) {
+            suggestions.add("纪律管理：建议加强课堂纪律把控，对分心或异常行为及时进行干预和提醒。");
+        }
+
+        if (suggestions.isEmpty()) {
+            return "本节课整体表现较好，建议继续保持当前教学组织方式，并适当加入互动环节提升课堂活力。";
+        }
+
+        return String.join("\n", suggestions);
+    }
 
     @Override
     public IPage<ReportPageVO> getPage(ReportPageQueryDTO query, Long currentTeacherId) {
@@ -199,12 +320,38 @@ public class ReportServiceImpl implements ReportService {
     public java.util.Map<String, Object> getEvaluation(Long taskId, Long currentTeacherId) {
         com.scbrbackend.model.entity.AnalysisReport report = analysisReportService.getByTaskId(taskId);
         if (report == null) {
-            throw new BusinessException(404, "该任务尚未生成评估报告");
+            // 先确认任务是否已完成
+            com.scbrbackend.model.entity.AnalysisTask task = analysisTaskMapper.selectById(taskId);
+            if (task == null) {
+                throw new BusinessException(404, "任务不存在");
+            }
+            if (task.getStatus() == null || task.getStatus() != 2) {
+                throw new BusinessException(400, "该任务尚未分析完成，暂不能生成评估报告");
+            }
+
+            // 自动生成一次
+            generateReport(taskId, currentTeacherId);
+
+            // 重新查询
+            report = analysisReportService.getByTaskId(taskId);
+            if (report == null) {
+                throw new BusinessException(500, "评估报告自动生成失败");
+            }
         }
+        
+        ReportDetailVO detail = reportMapper.selectReportDetailById(taskId, currentTeacherId);
         
         java.util.Map<String, Object> result = new java.util.HashMap<>();
         
         java.util.Map<String, Object> basicInfo = new java.util.HashMap<>();
+        basicInfo.put("courseName", detail != null ? detail.getCourseName() : null);
+        basicInfo.put("teacherName", detail != null ? detail.getTeacherName() : null);
+        basicInfo.put("classroomName", detail != null ? detail.getClassroomName() : null);
+        basicInfo.put("classTimeText", detail != null ? detail.getClassTimeText() : null);
+        basicInfo.put("studentCount", detail != null ? detail.getStudentCount() : null);
+        basicInfo.put("attendanceCount", detail != null ? detail.getAttendanceCount() : null);
+        basicInfo.put("mediaType", detail != null ? detail.getMediaType() : null);
+        basicInfo.put("durationSeconds", detail != null ? detail.getDurationSeconds() : null);
         basicInfo.put("reportLevel", report.getReportLevel());
         basicInfo.put("abnormalFlag", report.getAbnormalFlag());
         basicInfo.put("attendanceRate", report.getAttendanceRate());
@@ -280,27 +427,101 @@ public class ReportServiceImpl implements ReportService {
         int studentCount = schedule.getStudentCount() == null ? 0 : schedule.getStudentCount();
         int attendanceCount = task.getAttendanceCount() == null ? 0 : task.getAttendanceCount();
         
-        java.math.BigDecimal attendanceRate = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal attendanceScoreVal = java.math.BigDecimal.ZERO;
         if (studentCount > 0) {
-            attendanceRate = new java.math.BigDecimal(attendanceCount).divide(new java.math.BigDecimal(studentCount), 4, java.math.RoundingMode.HALF_UP).multiply(new java.math.BigDecimal(100));
+            attendanceScoreVal = new java.math.BigDecimal(attendanceCount).divide(new java.math.BigDecimal(studentCount), 4, java.math.RoundingMode.HALF_UP).multiply(new java.math.BigDecimal(100));
         } else {
-            attendanceRate = new java.math.BigDecimal("100.00");
+            attendanceScoreVal = new java.math.BigDecimal("100.00");
         }
-        if (attendanceRate.compareTo(new java.math.BigDecimal("100")) > 0) {
-            attendanceRate = new java.math.BigDecimal("100.00");
+        if (attendanceScoreVal.compareTo(new java.math.BigDecimal("100")) > 0) {
+            attendanceScoreVal = new java.math.BigDecimal("100.00");
         }
         
-        java.math.BigDecimal attendanceScore = attendanceRate;
-        java.math.BigDecimal totalScore = task.getTotalScore() != null ? task.getTotalScore() : java.math.BigDecimal.ZERO;
+        LambdaQueryWrapper<AnalysisDetail> detailQuery = new LambdaQueryWrapper<>();
+        detailQuery.eq(AnalysisDetail::getTaskId, taskId);
+        List<AnalysisDetail> details = analysisDetailMapper.selectList(detailQuery);
+
+        com.scbrbackend.model.entity.SysWeightConfig activeConfig = sysWeightConfigMapper.selectOne(
+                new LambdaQueryWrapper<com.scbrbackend.model.entity.SysWeightConfig>().eq(com.scbrbackend.model.entity.SysWeightConfig::getIsActive, 1));
+        Map<String, Double> weightMap = parseWeightConfig(activeConfig != null ? activeConfig.getConfigContent() : "[]");
+
+        java.util.Set<Integer> uniqueFrames = new java.util.HashSet<>();
+        Map<Integer, Map<String, Integer>> frameSumMap = new java.util.HashMap<>();
+        int snapshotCount = 0;
+        double snapshotPenalty = 0.0;
         
-        java.math.BigDecimal focusScore = totalScore.multiply(new java.math.BigDecimal("0.9")).setScale(2, java.math.RoundingMode.HALF_UP);
-        java.math.BigDecimal interactionScore = totalScore.multiply(new java.math.BigDecimal("0.85")).setScale(2, java.math.RoundingMode.HALF_UP);
-        java.math.BigDecimal disciplineScore = totalScore.multiply(new java.math.BigDecimal("0.95")).setScale(2, java.math.RoundingMode.HALF_UP);
+        for (AnalysisDetail d : details) {
+            if (d.getRecordType() == 2 && d.getSnapshotUrl() != null && !d.getSnapshotUrl().isEmpty()) {
+                snapshotCount++;
+                double w = getW(weightMap, d.getBehaviorType());
+                snapshotPenalty += w;
+                continue;
+            }
+            if (d.getRecordType() == 0 || d.getRecordType() == 1) {
+                int ft = d.getFrameTime() == null ? 0 : d.getFrameTime();
+                uniqueFrames.add(ft);
+                frameSumMap.putIfAbsent(ft, new java.util.HashMap<>());
+                Map<String, Integer> bMap = frameSumMap.get(ft);
+                bMap.put(d.getBehaviorType(), bMap.getOrDefault(d.getBehaviorType(), 0) + (d.getCount() == null ? 0 : d.getCount()));
+            }
+        }
         
+        Map<String, Double> avgCounts = new java.util.HashMap<>();
+        int frameCount = uniqueFrames.isEmpty() ? 1 : uniqueFrames.size();
+        for (Map<String, Integer> bMap : frameSumMap.values()) {
+            for (Map.Entry<String, Integer> e : bMap.entrySet()) {
+                avgCounts.put(e.getKey(), avgCounts.getOrDefault(e.getKey(), 0.0) + e.getValue());
+            }
+        }
+        for (Map.Entry<String, Double> e : avgCounts.entrySet()) {
+            avgCounts.put(e.getKey(), e.getValue() / frameCount);
+        }
+
+        double wFocus1 = getW(weightMap, "正常听课");
+        double wFocus2 = getW(weightMap, "阅读");
+        double wFocus3 = getW(weightMap, "书写");
+        double wFocus4 = getW(weightMap, "玩手机");
+        double wFocus5 = getW(weightMap, "趴桌");
+        boolean focusAllZero = (wFocus1 == 0 && wFocus2 == 0 && wFocus3 == 0 && wFocus4 == 0 && wFocus5 == 0);
+        double focusImpact = avgCounts.getOrDefault("正常听课", 0.0) * wFocus1 +
+                avgCounts.getOrDefault("阅读", 0.0) * wFocus2 +
+                avgCounts.getOrDefault("书写", 0.0) * wFocus3 +
+                avgCounts.getOrDefault("玩手机", 0.0) * wFocus4 +
+                avgCounts.getOrDefault("趴桌", 0.0) * wFocus5;
+        double focusScoreVal = focusAllZero ? 100.0 : clamp(100.0 + focusImpact, 0, 100);
+
+        double wInt1 = getW(weightMap, "举手回答问题");
+        if (wInt1 == 0.0) wInt1 = getW(weightMap, "举手");
+        double wInt2 = getW(weightMap, "起立回答问题");
+        if (wInt2 == 0.0) wInt2 = getW(weightMap, "起立");
+        boolean intAllZero = (wInt1 == 0 && wInt2 == 0);
+        double intImpact = avgCounts.getOrDefault("举手回答问题", avgCounts.getOrDefault("举手", 0.0)) * wInt1 +
+                avgCounts.getOrDefault("起立回答问题", avgCounts.getOrDefault("起立", 0.0)) * wInt2;
+        double interactionScoreVal = intAllZero ? 100.0 : clamp(0.0 + intImpact, 0, 100);
+
+        boolean discAllZero = (wFocus4 == 0 && wFocus5 == 0);
+        double discImpact = avgCounts.getOrDefault("玩手机", 0.0) * wFocus4 +
+                avgCounts.getOrDefault("趴桌", 0.0) * wFocus5 +
+                snapshotPenalty;
+        double disciplineScoreVal = discAllZero ? 100.0 : clamp(100.0 + discImpact, 0, 100);
+
+        double totalScoreVal = 0.25 * attendanceScoreVal.doubleValue() +
+                0.35 * focusScoreVal +
+                0.15 * interactionScoreVal +
+                0.25 * disciplineScoreVal;
+        totalScoreVal = clamp(totalScoreVal, 0, 100);
+
         String reportLevel = "需关注";
-        if (totalScore.compareTo(new java.math.BigDecimal("90")) >= 0) reportLevel = "优秀";
-        else if (totalScore.compareTo(new java.math.BigDecimal("80")) >= 0) reportLevel = "良好";
-        else if (totalScore.compareTo(new java.math.BigDecimal("70")) >= 0) reportLevel = "一般";
+        if (totalScoreVal >= 90) reportLevel = "优秀";
+        else if (totalScoreVal >= 80) reportLevel = "良好";
+        else if (totalScoreVal >= 70) reportLevel = "一般";
+
+        int abnormalFlag = 0;
+        if (avgCounts.getOrDefault("玩手机", 0.0) >= 1.0 ||
+                avgCounts.getOrDefault("趴桌", 0.0) >= 1.0 ||
+                snapshotCount > 0) {
+            abnormalFlag = 1;
+        }
 
         com.scbrbackend.model.entity.AnalysisReport report = analysisReportService.getByTaskId(taskId);
         boolean isUpdate = true;
@@ -311,27 +532,80 @@ public class ReportServiceImpl implements ReportService {
             report.setScheduleId(task.getScheduleId());
         }
         
-        report.setAttendanceRate(attendanceRate);
-        report.setAttendanceScore(attendanceScore);
-        report.setFocusScore(focusScore);
-        report.setInteractionScore(interactionScore);
-        report.setDisciplineScore(disciplineScore);
-        report.setTotalScore(totalScore);
+        report.setAttendanceRate(attendanceScoreVal);
+        report.setAttendanceScore(attendanceScoreVal);
+        report.setFocusScore(new java.math.BigDecimal(focusScoreVal).setScale(2, java.math.RoundingMode.HALF_UP));
+        report.setInteractionScore(new java.math.BigDecimal(interactionScoreVal).setScale(2, java.math.RoundingMode.HALF_UP));
+        report.setDisciplineScore(new java.math.BigDecimal(disciplineScoreVal).setScale(2, java.math.RoundingMode.HALF_UP));
+        report.setTotalScore(new java.math.BigDecimal(totalScoreVal).setScale(2, java.math.RoundingMode.HALF_UP));
         report.setReportLevel(reportLevel);
+        report.setAbnormalFlag(abnormalFlag);
         
-        LambdaQueryWrapper<AnalysisDetail> abnormalQuery = new LambdaQueryWrapper<>();
-        abnormalQuery.eq(AnalysisDetail::getTaskId, taskId)
-                     .in(AnalysisDetail::getRecordType, java.util.Arrays.asList(2, 1))
-                     .eq(AnalysisDetail::getBehaviorType, "玩手机");
-        long abnormalCount = analysisDetailMapper.selectCount(abnormalQuery);
-        report.setAbnormalFlag(abnormalCount > 0 ? 1 : 0);
+        report.setSummaryText(buildSummaryText(report));
+        report.setSuggestionText(buildSuggestionText(report));
         
-        report.setSummaryText(reportLevel.equals("优秀") ? "本节课整体课堂秩序较好，学生整体专注度较高。" : "本节实时课堂整体表现尚可，但存在一定波动。");
-        report.setSuggestionText("建议加强课堂关注度，并在课堂中段增加提问或讨论环节，以进一步提升学生互动。");
-        
-        report.setBehaviorStatsJson("{}");
-        report.setTrendDataJson("[]");
-        report.setAbnormalMomentsJson("[]");
+        try {
+            // 1. behaviorStatsJson
+            java.util.Map<String, java.util.Map<String, Object>> statsMap = new java.util.HashMap<>();
+            for (AnalysisDetail d : details) {
+                String type = d.getBehaviorType();
+                if (type == null) continue;
+                statsMap.putIfAbsent(type, new java.util.HashMap<>(java.util.Map.of("behaviorType", type, "totalCount", 0, "peakCount", 0, "ratio", "0%")));
+                java.util.Map<String, Object> stat = statsMap.get(type);
+                int currentTotal = (int) stat.get("totalCount") + (d.getCount() != null ? d.getCount() : 0);
+                int currentPeak = Math.max((int) stat.get("peakCount"), (d.getCount() != null ? d.getCount() : 0));
+                stat.put("totalCount", currentTotal);
+                stat.put("peakCount", currentPeak);
+            }
+            int allCount = statsMap.values().stream().mapToInt(v -> (int) v.get("totalCount")).sum();
+            for (java.util.Map<String, Object> stat : statsMap.values()) {
+                if (allCount > 0) {
+                    double ratio = (double) ((int) stat.get("totalCount")) / allCount * 100;
+                    stat.put("ratio", String.format("%.2f%%", ratio));
+                }
+            }
+            report.setBehaviorStatsJson(objectMapper.writeValueAsString(new java.util.ArrayList<>(statsMap.values())));
+            
+            // 2. trendDataJson
+            if (task.getMediaType() != null && task.getMediaType() == 1) {
+                report.setTrendDataJson("[]");
+            } else {
+                java.util.Map<String, java.util.Map<String, Object>> trendMap = new java.util.TreeMap<>();
+                for (AnalysisDetail d : details) {
+                    if (d.getFrameTime() == null) continue;
+                    int totalSecs = d.getFrameTime();
+                    String timeStr = String.format("%02d:%02d:%02d", totalSecs / 3600, (totalSecs % 3600) / 60, totalSecs % 60);
+                    trendMap.putIfAbsent(timeStr, new java.util.HashMap<>(java.util.Map.of("frameTime", timeStr)));
+                    java.util.Map<String, Object> point = trendMap.get(timeStr);
+                    point.put(d.getBehaviorType(), (int) point.getOrDefault(d.getBehaviorType(), 0) + (d.getCount() != null ? d.getCount() : 0));
+                }
+                report.setTrendDataJson(objectMapper.writeValueAsString(new java.util.ArrayList<>(trendMap.values())));
+            }
+            
+            // 3. abnormalMomentsJson
+            List<java.util.Map<String, Object>> abnormalList = new java.util.ArrayList<>();
+            for (AnalysisDetail d : details) {
+                if (d.getSnapshotUrl() != null && !d.getSnapshotUrl().isEmpty()) {
+                    java.util.Map<String, Object> am = new java.util.HashMap<>();
+                    if (d.getFrameTime() != null) {
+                        int totalSecs = d.getFrameTime();
+                        am.put("frameTime", String.format("%02d:%02d:%02d", totalSecs / 3600, (totalSecs % 3600) / 60, totalSecs % 60));
+                    } else {
+                        am.put("frameTime", null);
+                    }
+                    am.put("behaviorType", d.getBehaviorType());
+                    am.put("count", d.getCount());
+                    am.put("snapshotUrl", d.getSnapshotUrl());
+                    abnormalList.add(am);
+                }
+            }
+            report.setAbnormalMomentsJson(objectMapper.writeValueAsString(abnormalList));
+            
+        } catch (Exception e) {
+            report.setBehaviorStatsJson("[]");
+            report.setTrendDataJson("[]");
+            report.setAbnormalMomentsJson("[]");
+        }
 
         if (isUpdate) {
             analysisReportService.updateById(report);

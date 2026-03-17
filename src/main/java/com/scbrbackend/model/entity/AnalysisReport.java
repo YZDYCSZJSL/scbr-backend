@@ -18,24 +18,24 @@ public class AnalysisReport {
     private Long id;
     private Long taskId;
     private Long scheduleId;
-    
+
     private BigDecimal attendanceRate;
     private BigDecimal attendanceScore;
     private BigDecimal focusScore;
     private BigDecimal interactionScore;
     private BigDecimal disciplineScore;
     private BigDecimal totalScore;
-    
+
     private String reportLevel;
     private Integer abnormalFlag;
     private String summaryText;
     private String suggestionText;
-    
+
     // 存储JSON字符串
     private String behaviorStatsJson;
     private String trendDataJson;
     private String abnormalMomentsJson;
-    
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -88,7 +88,16 @@
             t.status AS status,
             t.attendance_count AS attendanceCount,
             t.total_score AS totalScore,
-            sf.file_url AS fileUrl
+            sf.file_url AS fileUrl,
+            CONCAT(cs.academic_year, '学年 第', cs.semester, '学期 ', 
+              CASE cs.weekday 
+                WHEN 1 THEN '周一' WHEN 2 THEN '周二' WHEN 3 THEN '周三' 
+                WHEN 4 THEN '周四' WHEN 5 THEN '周五' WHEN 6 THEN '周六' WHEN 7 THEN '周日' 
+                ELSE '' END,
+              ' 第', cs.start_section_id, '-', cs.end_section_id, '节 ', 
+              cs.start_week, '-', cs.end_week, '周') AS classTimeText,
+            cs.student_count AS studentCount,
+            IFNULL(TIMESTAMPDIFF(SECOND, t.start_time, t.finish_time), NULL) AS durationSeconds
         FROM analysis_task t
         LEFT JOIN course_schedule cs ON t.schedule_id = cs.id
         LEFT JOIN course c ON cs.course_id = c.id
