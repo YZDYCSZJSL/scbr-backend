@@ -190,7 +190,7 @@ public class ModelCallbackService {
         }
     }
 
-    private double calculateScore(Long scheduleId,
+    public double calculateScore(Long scheduleId,
                                   Integer attendanceCount,
                                   List<ModelFileCallbackDTO.Detail> details) {
         double baseScore = 100.0;
