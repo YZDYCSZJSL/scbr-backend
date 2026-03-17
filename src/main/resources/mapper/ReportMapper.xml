@@ -5,19 +5,27 @@
     <select id="selectReportPage" resultType="com.scbrbackend.model.vo.ReportPageVO">
         SELECT 
             t.id,
+            t.id AS taskId,
+            t.schedule_id AS scheduleId,
             c.name AS courseName,
             cr.name AS classroomName,
             th.name AS teacherName,
+            CONCAT('周', cs.weekday, ' 第', cs.start_section_id, '-', cs.end_section_id, '节') AS classTimeText,
             t.media_type AS mediaType,
             t.created_at AS createdAt,
             t.status AS status,
+            cs.student_count AS studentCount,
             t.attendance_count AS attendanceCount,
-            t.total_score AS totalScore
+            ar.attendance_rate AS attendanceRate,
+            t.total_score AS totalScore,
+            ar.report_level AS reportLevel,
+            ar.abnormal_flag AS abnormalFlag
         FROM analysis_task t
         LEFT JOIN course_schedule cs ON t.schedule_id = cs.id
         LEFT JOIN course c ON cs.course_id = c.id
         LEFT JOIN classroom cr ON cs.classroom_id = cr.id
         LEFT JOIN teacher th ON cs.teacher_id = th.id
+        LEFT JOIN analysis_report ar ON t.id = ar.task_id
         <where>
             <if test="query.keyword != null and query.keyword != ''">
                 AND (c.name LIKE CONCAT('%', #{query.keyword}, '%') OR th.name LIKE CONCAT('%', #{query.keyword}, '%'))
@@ -38,19 +46,27 @@
     <select id="selectReportExport" resultType="com.scbrbackend.model.vo.ReportPageVO">
         SELECT 
             t.id,
+            t.id AS taskId,
+            t.schedule_id AS scheduleId,
             c.name AS courseName,
             cr.name AS classroomName,
             th.name AS teacherName,
+            CONCAT('周', cs.weekday, ' 第', cs.start_section_id, '-', cs.end_section_id, '节') AS classTimeText,
             t.media_type AS mediaType,
             t.created_at AS createdAt,
             t.status AS status,
+            cs.student_count AS studentCount,
             t.attendance_count AS attendanceCount,
-            t.total_score AS totalScore
+            ar.attendance_rate AS attendanceRate,
+            t.total_score AS totalScore,
+            ar.report_level AS reportLevel,
+            ar.abnormal_flag AS abnormalFlag
         FROM analysis_task t
         LEFT JOIN course_schedule cs ON t.schedule_id = cs.id
         LEFT JOIN course c ON cs.course_id = c.id
         LEFT JOIN classroom cr ON cs.classroom_id = cr.id
         LEFT JOIN teacher th ON cs.teacher_id = th.id
+        LEFT JOIN analysis_report ar ON t.id = ar.task_id
         WHERE t.id IN 
         <foreach collection="ids" item="id" open="(" separator="," close=")">
             #{id}

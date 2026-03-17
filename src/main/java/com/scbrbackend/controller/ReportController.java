@@ -80,4 +80,37 @@ public class ReportController {
         ReportDetailVO detail = reportService.getDetailById(id, currentTeacherId);
         return Result.success(detail);
     }
+
+    @GetMapping("/{taskId}/evaluation")
+    public Result<java.util.Map<String, Object>> getEvaluation(@PathVariable("taskId") Long taskId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        Long currentTeacherId = getFilteredTeacherId(currentTeacher);
+        return Result.success(reportService.getEvaluation(taskId, currentTeacherId));
+    }
+
+    @GetMapping("/{taskId}/trend")
+    public Result<java.util.List<Object>> getTrend(@PathVariable("taskId") Long taskId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        Long currentTeacherId = getFilteredTeacherId(currentTeacher);
+        return Result.success(reportService.getTrend(taskId, currentTeacherId));
+    }
+
+    @GetMapping("/{taskId}/abnormal-snapshots")
+    public Result<java.util.List<Object>> getAbnormalSnapshots(@PathVariable("taskId") Long taskId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        Long currentTeacherId = getFilteredTeacherId(currentTeacher);
+        return Result.success(reportService.getAbnormalSnapshots(taskId, currentTeacherId));
+    }
+
+    @PostMapping("/{taskId}/generate")
+    public Result<Void> generateReport(@PathVariable("taskId") Long taskId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        Long currentTeacherId = getFilteredTeacherId(currentTeacher);
+        reportService.generateReport(taskId, currentTeacherId);
+        return Result.success(null);
+    }
 }

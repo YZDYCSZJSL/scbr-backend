@@ -1,7 +1,6 @@
 server:
   port: 8080
- 
-  
+
 spring:
   application:
     name: scbr-backend
@@ -9,9 +8,9 @@ spring:
     active: local
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/smart_classroom_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-    username: root
-    password: li01221878.
+    url: ${datasource.url}
+    username: ${datasource.username}
+    password: ${datasource.password}
   servlet:
     multipart:
       max-file-size: 500MB       # 设置单个文件允许的最大大小 (这里以10MB为例，你可以根据需求调整)
@@ -19,7 +18,7 @@ spring:
 
 scbrbackend:
   # 后端服务公网地址，用于作为模型端处理完后的回调地址。由于 127.0.0.1 会指向模型服务器自己，这里一定要改成后端服务器的真实公网IP和端口！
-  server-address: "http://<你的后端公网IP>:8080"
+  server-address: "http://${scbrbackend.server-address}:8080"
   model:
     base-url: ${model.base-url}
     # 填入与 Python 模型服务实际配置一致的 token

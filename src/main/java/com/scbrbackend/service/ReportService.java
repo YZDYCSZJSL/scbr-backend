@@ -11,4 +11,9 @@ public interface ReportService {
     IPage<ReportPageVO> getPage(ReportPageQueryDTO query, Long currentTeacherId);
     void exportByIds(ReportExportDTO dto, HttpServletResponse response, Long currentTeacherId);
     ReportDetailVO getDetailById(Long id, Long currentTeacherId);
+    
+    java.util.Map<String, Object> getEvaluation(Long taskId, Long currentTeacherId);
+    java.util.List<Object> getTrend(Long taskId, Long currentTeacherId);
+    java.util.List<Object> getAbnormalSnapshots(Long taskId, Long currentTeacherId);
+    void generateReport(Long taskId, Long currentTeacherId);
 }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.scbrbackend.mapper.AnalysisReportMapper">
+    <!-- 基础结果集映射 -->
+    <resultMap id="BaseResultMap" type="com.scbrbackend.model.entity.AnalysisReport">
+        <id column="id" property="id" />
+        <result column="task_id" property="taskId" />
+        <result column="schedule_id" property="scheduleId" />
+        <result column="attendance_rate" property="attendanceRate" />
+        <result column="attendance_score" property="attendanceScore" />
+        <result column="focus_score" property="focusScore" />
+        <result column="interaction_score" property="interactionScore" />
+        <result column="discipline_score" property="disciplineScore" />
+        <result column="total_score" property="totalScore" />
+        <result column="report_level" property="reportLevel" />
+        <result column="abnormal_flag" property="abnormalFlag" />
+        <result column="summary_text" property="summaryText" />
+        <result column="suggestion_text" property="suggestionText" />
+        <result column="behavior_stats_json" property="behaviorStatsJson" />
+        <result column="trend_data_json" property="trendDataJson" />
+        <result column="abnormal_moments_json" property="abnormalMomentsJson" />
+        <result column="created_at" property="createdAt" />
+        <result column="updated_at" property="updatedAt" />
+    </resultMap>
+</mapper>
