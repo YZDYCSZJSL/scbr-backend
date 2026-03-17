@@ -25,6 +25,9 @@ public class AuthService {
     @Autowired
     private LogService logService;
 
+    @Autowired
+    private com.scbrbackend.utils.JwtUtil jwtUtil;
+
     private void saveLoginLog(String empNo, String userName, int status, String message, HttpServletRequest request) {
         SysLoginLog log = new SysLoginLog();
         log.setEmpNo(empNo);
@@ -66,11 +69,11 @@ public class AuthService {
             return Result.error(401, "用户名或密码错误！");
         }
 
-        // 5. 生成响应数据 (这里暂时模拟生成 Token)
-        String mockToken = "mock_jwt_token_" + teacher.getEmpNo();
+        // 5. 生成响应数据 (使用真实的 JWT Token)
+        String token = jwtUtil.generateToken(teacher.getEmpNo(), teacher.getRole(), teacher.getName());
 
         LoginResponseDTO response = LoginResponseDTO.builder()
-                .token(mockToken)
+                .token(token)
                 .userInfo(LoginResponseDTO.UserInfo.builder()
                         .id(teacher.getId())
                         .empNo(teacher.getEmpNo())

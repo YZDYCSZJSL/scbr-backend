@@ -20,27 +20,7 @@ public class ReportController {
     private final com.scbrbackend.mapper.TeacherMapper teacherMapper;
     private final com.scbrbackend.service.LogService logService;
 
-    private com.scbrbackend.model.entity.Teacher getCurrentTeacher(jakarta.servlet.http.HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7);
-        }
-        if (token == null || !token.startsWith("mock_jwt_token_")) {
-            throw new com.scbrbackend.common.exception.BusinessException(401, "未授权的访问！");
-        }
-        String empNo = token.substring("mock_jwt_token_".length());
-
-        com.scbrbackend.model.entity.Teacher currentTeacher = teacherMapper.selectOne(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.scbrbackend.model.entity.Teacher>()
-                        .eq(com.scbrbackend.model.entity.Teacher::getEmpNo, empNo));
-
-        if (currentTeacher == null) {
-            throw new com.scbrbackend.common.exception.BusinessException(401, "无效的用户令牌！");
-        }
-        return currentTeacher;
-    }
-
-    private Long getFilteredTeacherId(com.scbrbackend.model.entity.Teacher currentTeacher) {
+    private Long getFilteredTeacherId(com.scbrbackend.common.context.CurrentUser currentTeacher) {
         if (currentTeacher.getRole() != null && currentTeacher.getRole() == 1) {
             return null; // 不加条件过滤，全部可看
         }
@@ -50,7 +30,7 @@ public class ReportController {
     @GetMapping("/page")
     public Result<PageResult<ReportPageVO>> getPage(ReportPageQueryDTO query,
             jakarta.servlet.http.HttpServletRequest request) {
-        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        com.scbrbackend.common.context.CurrentUser currentTeacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         IPage<ReportPageVO> pageResult = reportService.getPage(query, currentTeacherId);
         return Result.success(PageResult.from(pageResult));
@@ -59,7 +39,7 @@ public class ReportController {
     @PostMapping("/export")
     public void export(@RequestBody ReportExportDTO dto, HttpServletResponse response,
             jakarta.servlet.http.HttpServletRequest request) {
-        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        com.scbrbackend.common.context.CurrentUser currentTeacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         reportService.exportByIds(dto, response, currentTeacherId);
         
@@ -75,7 +55,7 @@ public class ReportController {
     @GetMapping("/{id}/detail")
     public Result<ReportDetailVO> getDetail(@PathVariable("id") Long id,
             jakarta.servlet.http.HttpServletRequest request) {
-        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        com.scbrbackend.common.context.CurrentUser currentTeacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         ReportDetailVO detail = reportService.getDetailById(id, currentTeacherId);
         return Result.success(detail);
@@ -84,7 +64,7 @@ public class ReportController {
     @GetMapping("/{taskId}/evaluation")
     public Result<java.util.Map<String, Object>> getEvaluation(@PathVariable("taskId") Long taskId,
             jakarta.servlet.http.HttpServletRequest request) {
-        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        com.scbrbackend.common.context.CurrentUser currentTeacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         return Result.success(reportService.getEvaluation(taskId, currentTeacherId));
     }
@@ -92,7 +72,7 @@ public class ReportController {
     @GetMapping("/{taskId}/trend")
     public Result<java.util.List<Object>> getTrend(@PathVariable("taskId") Long taskId,
             jakarta.servlet.http.HttpServletRequest request) {
-        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        com.scbrbackend.common.context.CurrentUser currentTeacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         return Result.success(reportService.getTrend(taskId, currentTeacherId));
     }
@@ -100,7 +80,7 @@ public class ReportController {
     @GetMapping("/{taskId}/abnormal-snapshots")
     public Result<java.util.List<Object>> getAbnormalSnapshots(@PathVariable("taskId") Long taskId,
             jakarta.servlet.http.HttpServletRequest request) {
-        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        com.scbrbackend.common.context.CurrentUser currentTeacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         return Result.success(reportService.getAbnormalSnapshots(taskId, currentTeacherId));
     }
@@ -108,7 +88,7 @@ public class ReportController {
     @PostMapping("/{taskId}/generate")
     public Result<Void> generateReport(@PathVariable("taskId") Long taskId,
             jakarta.servlet.http.HttpServletRequest request) {
-        com.scbrbackend.model.entity.Teacher currentTeacher = getCurrentTeacher(request);
+        com.scbrbackend.common.context.CurrentUser currentTeacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long currentTeacherId = getFilteredTeacherId(currentTeacher);
         reportService.generateReport(taskId, currentTeacherId);
         return Result.success(null);

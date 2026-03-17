@@ -25,21 +25,12 @@ public class SysSemesterConfigController {
     @Autowired
     private TeacherMapper teacherMapper;
 
-    private void checkAdminRole(String token) {
-        if (token == null || token.trim().isEmpty()) {
+    private void checkAdminRole() {
+        com.scbrbackend.common.context.CurrentUser user = com.scbrbackend.common.context.UserContext.getCurrentUser();
+        if (user == null) {
             throw new BusinessException(401, "未授权的访问！");
         }
-        String authToken = token.trim();
-        if (authToken.startsWith("Bearer ")) {
-            authToken = authToken.substring(7).trim();
-        }
-        if (!authToken.startsWith("mock_jwt_token_")) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-        String empNo = authToken.substring("mock_jwt_token_".length());
-        Teacher teacher = teacherMapper.selectOne(
-                new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
-        if (teacher == null || teacher.getRole() != 1) {
+        if (user.getRole() == null || user.getRole() != 1) {
             throw new BusinessException(403, "无权限访问，仅限管理员操作！");
         }
     }
@@ -50,7 +41,7 @@ public class SysSemesterConfigController {
     @GetMapping("/options")
     public Result<List<SemesterConfigOptionVO>> getOptions(
             @RequestHeader(value = "Authorization", required = false) String token) {
-        checkAdminRole(token);
+        checkAdminRole();
         return sysSemesterConfigService.getOptions();
     }
 }

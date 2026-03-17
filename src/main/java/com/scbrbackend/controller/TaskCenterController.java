@@ -26,38 +26,12 @@ public class TaskCenterController {
     @Autowired
     private com.scbrbackend.service.LogService logService;
 
-    private Teacher getCurrentTeacher(String authorization) {
-        if (authorization == null || authorization.trim().isEmpty()) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
 
-        String token = authorization.trim();
-
-        // 兼容前端传 Bearer
-        if (token.startsWith("Bearer ")) {
-            token = token.substring(7).trim();
-        }
-
-        if (!token.startsWith("mock_jwt_token_")) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-
-        String empNo = token.substring("mock_jwt_token_".length());
-
-        Teacher teacher = teacherMapper.selectOne(
-                new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
-
-        if (teacher == null) {
-            throw new BusinessException(401, "无效的用户令牌！");
-        }
-
-        return teacher;
-    }
 
     @GetMapping("/page")
     public Result<Map<String, Object>> getTaskPage(TaskCenterPageQueryDTO query,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         if (teacher.getRole() == null || teacher.getRole() != 1) {
             // 普通教师限制只能看自己的
             query.setTeacherId(teacher.getId());
@@ -72,7 +46,7 @@ public class TaskCenterController {
     @GetMapping("/{taskId}")
     public Result<TaskCenterDetailDTO> getTaskDetail(@PathVariable Long taskId,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long teacherId = (teacher.getRole() == null || teacher.getRole() != 1) ? teacher.getId() : null;
         TaskCenterDetailDTO detail = taskCenterService.getTaskDetail(taskId, teacherId);
         return Result.success("success", detail);
@@ -81,7 +55,7 @@ public class TaskCenterController {
     @GetMapping("/{taskId}/logs")
     public Result<List<TaskLogItemDTO>> getTaskLogs(@PathVariable Long taskId,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long teacherId = (teacher.getRole() == null || teacher.getRole() != 1) ? teacher.getId() : null;
         List<TaskLogItemDTO> logs = taskCenterService.getTaskLogs(taskId, teacherId);
         return Result.success("success", logs);
@@ -90,7 +64,7 @@ public class TaskCenterController {
     @PostMapping("/{taskId}/retry")
     public Result<RetryTaskResponseDTO> retryTask(@PathVariable Long taskId,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         Long teacherId = (teacher.getRole() == null || teacher.getRole() != 1) ? teacher.getId() : null;
         
         try {

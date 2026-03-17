@@ -30,7 +30,12 @@ public class AnalysisTaskController {
             @RequestParam("streamType") Integer streamType,
             HttpServletRequest request) {
 
-        // 解析 Token
+        // 如果 token 在这主要用作传给模型或后续验证等，但我们内部改成了 UserContext，
+        // 实际上 analysisTaskService.createAnalysisTask 里面也有一段解析，等下我们要去改服务层吗？
+        // 由于任务明确“尽量不改其他多余层”，如果 analysisTaskService.createAnalysisTask 原本接收的是 token 并且它内部去解析(如果需要)。
+        // 为了平滑过渡且不增加额外修改，如果下游只需要 token 字符串或者下游不抛异常，我们可以用当前请求头部的原始 token 或 JWT（直接透传 requestHeader 里的 JWT）。
+        // 建议传入 JWT token 原字符，但在本控制器中我们还是按原代码透传。
+        
         String token = request.getHeader("Authorization");
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
@@ -61,12 +66,9 @@ public class AnalysisTaskController {
     @PutMapping("/{taskId}/stop")
     public Result<Object> stopTask(@PathVariable("taskId") Long taskId,
             jakarta.servlet.http.HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7);
-        }
-        String empNo = token != null && token.startsWith("mock_jwt_token_") ? token.substring("mock_jwt_token_".length()) : "unknown";
-        String teacherName = empNo.equals("unknown") ? "未知" : empNo; // Simplification, strictly requires actual name from token but logService only requires not-nulls
+        com.scbrbackend.common.context.CurrentUser user = com.scbrbackend.common.context.UserContext.getCurrentUser();
+        String empNo = user.getEmpNo();
+        String teacherName = user.getName();
 
         try {
             analysisTaskService.stopAnalysisTask(taskId);

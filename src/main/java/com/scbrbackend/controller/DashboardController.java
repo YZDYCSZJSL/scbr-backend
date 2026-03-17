@@ -22,30 +22,20 @@ public class DashboardController {
     private final DashboardService dashboardService;
     private final TeacherMapper teacherMapper;
 
-    private Teacher getCurrentTeacher(HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7);
-        }
-        if (token == null || !token.startsWith("mock_jwt_token_")) {
-            throw new BusinessException(401, "登录状态已失效，请重新登录！");
-        }
-        String empNo = token.substring("mock_jwt_token_".length());
 
-        Teacher currentTeacher = teacherMapper.selectOne(
-                new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
-
-        if (currentTeacher == null) {
-            throw new BusinessException(401, "登录状态已失效，请重新登录！");
-        }
-        return currentTeacher;
-    }
 
     @GetMapping("/overview")
     public Result<DashboardOverviewDTO> getOverview(
             @RequestParam(value = "days", defaultValue = "7") Integer days,
             HttpServletRequest request) {
-        Teacher currentTeacher = getCurrentTeacher(request);
+        // 这里需要传递 Teacher 实体给 dashboardService，我们通过 userContext 转换或查询
+        com.scbrbackend.common.context.CurrentUser currentUser = com.scbrbackend.common.context.UserContext.getCurrentUser();
+        Teacher currentTeacher = new Teacher();
+        currentTeacher.setId(currentUser.getId());
+        currentTeacher.setEmpNo(currentUser.getEmpNo());
+        currentTeacher.setName(currentUser.getName());
+        currentTeacher.setRole(currentUser.getRole());
+        currentTeacher.setDepartment(currentUser.getDepartment());
         DashboardOverviewDTO dto = dashboardService.getOverview(currentTeacher, days);
         return Result.success(dto);
     }

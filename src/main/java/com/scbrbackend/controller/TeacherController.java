@@ -7,10 +7,8 @@ import com.scbrbackend.model.dto.TeacherResponseDTO;
 import com.scbrbackend.service.TeacherService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.scbrbackend.common.exception.BusinessException;
-import com.scbrbackend.model.entity.Teacher;
-import com.scbrbackend.mapper.TeacherMapper;
+
 
 @RestController
 @RequestMapping("/api/v1/admin/teacher")
@@ -19,31 +17,12 @@ public class TeacherController {
     @Autowired
     private TeacherService teacherService;
 
-    @Autowired
-    private TeacherMapper teacherMapper;
+
 
     @Autowired
     private com.scbrbackend.service.LogService logService;
 
-    private Teacher getCurrentTeacher(String authorization) {
-        if (authorization == null || authorization.trim().isEmpty()) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-        String token = authorization.trim();
-        if (token.startsWith("Bearer ")) {
-            token = token.substring(7).trim();
-        }
-        if (!token.startsWith("mock_jwt_token_")) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-        String empNo = token.substring("mock_jwt_token_".length());
-        Teacher teacher = teacherMapper.selectOne(
-                new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
-        if (teacher == null) {
-            throw new BusinessException(401, "无效的用户令牌！");
-        }
-        return teacher;
-    }
+
 
     @GetMapping("/page")
     public Result<PageResult<TeacherResponseDTO>> getTeacherPage(
@@ -58,7 +37,7 @@ public class TeacherController {
     @PostMapping
     public Result<Object> addTeacher(@RequestBody TeacherRequestDTO requestDTO,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<Object> res = teacherService.addTeacher(requestDTO);
             if (res.getCode() == 200) {
@@ -77,7 +56,7 @@ public class TeacherController {
     @PutMapping
     public Result<Object> updateTeacher(@RequestBody TeacherRequestDTO requestDTO,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<Object> res = teacherService.updateTeacher(requestDTO);
             if (res.getCode() == 200) {
@@ -96,7 +75,7 @@ public class TeacherController {
     @PutMapping("/status/{id}")
     public Result<Object> changeStatus(@PathVariable Long id, @RequestBody TeacherRequestDTO requestDTO,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<Object> res = teacherService.changeStatus(id, requestDTO.getStatus());
             if (res.getCode() == 200) {
@@ -115,7 +94,7 @@ public class TeacherController {
     @DeleteMapping("/{id}")
     public Result<Object> deleteTeacher(@PathVariable Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<Object> res = teacherService.deleteTeacher(id);
             if (res.getCode() == 200) {

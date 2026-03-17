@@ -26,31 +26,12 @@ public class LogController {
     @Autowired
     private TeacherMapper teacherMapper;
 
-    private void checkAdminRole(String authorization) {
-        if (authorization == null || authorization.trim().isEmpty()) {
+    private void checkAdminRole() {
+        com.scbrbackend.common.context.CurrentUser user = com.scbrbackend.common.context.UserContext.getCurrentUser();
+        if (user == null) {
             throw new BusinessException(401, "未授权的访问！");
         }
-
-        String token = authorization.trim();
-
-        if (token.startsWith("Bearer ")) {
-            token = token.substring(7).trim();
-        }
-
-        if (!token.startsWith("mock_jwt_token_")) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-
-        String empNo = token.substring("mock_jwt_token_".length());
-
-        Teacher teacher = teacherMapper.selectOne(
-                new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
-
-        if (teacher == null) {
-            throw new BusinessException(401, "无效的用户令牌！");
-        }
-
-        if (teacher.getRole() == null || teacher.getRole() != 1) {
+        if (user.getRole() == null || user.getRole() != 1) {
             throw new BusinessException(403, "无权限访问日志中心！");
         }
     }
@@ -59,7 +40,7 @@ public class LogController {
     public Result<PageResult<LoginLogPageVO>> getLoginLogPage(
             LoginLogPageQueryDTO query,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        checkAdminRole(token);
+        checkAdminRole();
         PageResult<LoginLogPageVO> pageData = logService.getLoginLogPage(query);
         return Result.success("success", pageData);
     }
@@ -68,7 +49,7 @@ public class LogController {
     public Result<PageResult<OperationLogPageVO>> getOperationLogPage(
             OperationLogPageQueryDTO query,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        checkAdminRole(token);
+        checkAdminRole();
         PageResult<OperationLogPageVO> pageData = logService.getOperationLogPage(query);
         return Result.success("success", pageData);
     }
@@ -77,7 +58,7 @@ public class LogController {
     public Result<PageResult<TaskLogPageVO>> getTaskLogPage(
             TaskLogPageQueryDTO query,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        checkAdminRole(token);
+        checkAdminRole();
         PageResult<TaskLogPageVO> pageData = logService.getTaskLogPage(query);
         return Result.success("success", pageData);
     }

@@ -7,10 +7,8 @@ import com.scbrbackend.service.SysWeightConfigService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.scbrbackend.common.exception.BusinessException;
-import com.scbrbackend.model.entity.Teacher;
-import com.scbrbackend.mapper.TeacherMapper;
+
 
 @RestController
 @RequestMapping("/api/v1/admin/config")
@@ -19,31 +17,12 @@ public class SysWeightConfigController {
     @Autowired
     private SysWeightConfigService sysWeightConfigService;
 
-    @Autowired
-    private TeacherMapper teacherMapper;
+
 
     @Autowired
     private com.scbrbackend.service.LogService logService;
 
-    private Teacher getCurrentTeacher(String authorization) {
-        if (authorization == null || authorization.trim().isEmpty()) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-        String token = authorization.trim();
-        if (token.startsWith("Bearer ")) {
-            token = token.substring(7).trim();
-        }
-        if (!token.startsWith("mock_jwt_token_")) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-        String empNo = token.substring("mock_jwt_token_".length());
-        Teacher teacher = teacherMapper.selectOne(
-                new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
-        if (teacher == null) {
-            throw new BusinessException(401, "无效的用户令牌！");
-        }
-        return teacher;
-    }
+
 
     @GetMapping("/page")
     public Result<PageResult<SystemConfigDTO>> getConfigPage(
@@ -55,7 +34,7 @@ public class SysWeightConfigController {
     @PostMapping
     public Result<Object> addConfig(@RequestBody SystemConfigDTO requestDTO,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<Object> res = sysWeightConfigService.addConfig(requestDTO);
             if (res.getCode() == 200) {
@@ -74,7 +53,7 @@ public class SysWeightConfigController {
     @PutMapping
     public Result<Object> updateConfig(@RequestBody SystemConfigDTO requestDTO,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<Object> res = sysWeightConfigService.updateConfig(requestDTO);
             if (res.getCode() == 200) {
@@ -93,7 +72,7 @@ public class SysWeightConfigController {
     @DeleteMapping("/{id}")
     public Result<Object> deleteConfig(@PathVariable Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<Object> res = sysWeightConfigService.deleteConfig(id);
             if (res.getCode() == 200) {
@@ -112,7 +91,7 @@ public class SysWeightConfigController {
     @PutMapping("/{id}/active")
     public Result<String> activateConfig(@PathVariable Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<String> res = sysWeightConfigService.activateConfig(id);
             if (res.getCode() == 200) {
@@ -131,7 +110,7 @@ public class SysWeightConfigController {
     @PostMapping("/import")
     public Result<String> importConfig(@RequestParam("file") MultipartFile file,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<String> res = sysWeightConfigService.importConfig(file);
             if (res.getCode() == 200) {

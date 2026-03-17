@@ -10,13 +10,11 @@ import com.scbrbackend.model.vo.SchedulePageVO;
 import com.scbrbackend.service.CourseScheduleService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import com.scbrbackend.common.exception.BusinessException;
 
 import java.util.List;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.scbrbackend.common.exception.BusinessException;
-import com.scbrbackend.model.entity.Teacher;
-import com.scbrbackend.mapper.TeacherMapper;
+
 
 @RestController
 @RequestMapping("/api/v1/admin/schedule")
@@ -25,31 +23,12 @@ public class CourseScheduleController {
     @Autowired
     private CourseScheduleService courseScheduleService;
 
-    @Autowired
-    private TeacherMapper teacherMapper;
+
 
     @Autowired
     private com.scbrbackend.service.LogService logService;
 
-    private Teacher getCurrentTeacher(String authorization) {
-        if (authorization == null || authorization.trim().isEmpty()) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-        String token = authorization.trim();
-        if (token.startsWith("Bearer ")) {
-            token = token.substring(7).trim();
-        }
-        if (!token.startsWith("mock_jwt_token_")) {
-            throw new BusinessException(401, "未授权的访问！");
-        }
-        String empNo = token.substring("mock_jwt_token_".length());
-        Teacher teacher = teacherMapper.selectOne(
-                new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
-        if (teacher == null) {
-            throw new BusinessException(401, "无效的用户令牌！");
-        }
-        return teacher;
-    }
+
 
     // ======================== 分页查询 ========================
 
@@ -63,7 +42,7 @@ public class CourseScheduleController {
     @PostMapping
     public Result<String> addSchedule(@RequestBody ScheduleRequestDTO requestDTO,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<String> res = courseScheduleService.saveOrUpdateSchedule(requestDTO);
             if (res.getCode() == 200) {
@@ -87,7 +66,7 @@ public class CourseScheduleController {
     @PutMapping
     public Result<String> updateSchedule(@RequestBody ScheduleRequestDTO requestDTO,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<String> res = courseScheduleService.saveOrUpdateSchedule(requestDTO);
             if (res.getCode() == 200) {
@@ -113,7 +92,7 @@ public class CourseScheduleController {
     @DeleteMapping("/{id}")
     public Result<Object> deleteSchedule(@PathVariable Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         try {
             Result<Object> res = courseScheduleService.deleteSchedule(id);
             if (res.getCode() == 200) {
@@ -139,6 +118,13 @@ public class CourseScheduleController {
     public Result<List<ScheduleAnalysisItemVO>> getAnalysisList(
             @RequestParam int streamType,
             jakarta.servlet.http.HttpServletRequest request) {
+        com.scbrbackend.common.context.CurrentUser user = com.scbrbackend.common.context.UserContext.getCurrentUser();
+        // 如果这里原来的 streamType 等验证逻辑需要 token 字符串，可能需要适配，但从原本业务看 token 只是用来识别用户。
+        // 原生业务里的 courseScheduleService.getAnalysisList(streamType, token) 是怎么写的呢?
+        // 我们来看刚才搜到的 service实现。
+        // 不过由于不改变Service层的方法签名，这里我们可以传入 user.getEmpNo() 等信息以代 token 或是传入 token 本身（因为需要被下游验证的话）...
+        // 稍等，如果是放进拦截器验证，其实 downstream 用不到 token。
+        // 但安全起见，我们暂且按原样截取 token 传入（虽然原样传 jwt 也可）。
         String token = request.getHeader("Authorization");
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
@@ -151,7 +137,7 @@ public class CourseScheduleController {
     @GetMapping("/section-time/list")
     public Result<List<com.scbrbackend.model.vo.SectionTimeVO>> getSectionTimeList(
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         if (teacher.getRole() != 1) {
             throw new BusinessException(403, "无权限访问节次列表！");
         }
@@ -164,7 +150,7 @@ public class CourseScheduleController {
     public Result<com.scbrbackend.model.vo.ScheduleConflictVO> checkConflict(
             @RequestBody com.scbrbackend.model.dto.ScheduleConflictCheckDTO requestDTO,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         if (teacher.getRole() != 1) {
             throw new BusinessException(403, "无权限进行排课冲突检测！");
         }
@@ -180,7 +166,7 @@ public class CourseScheduleController {
             @RequestParam(required = false) Long teacherId,
             @RequestParam(required = false) Long classroomId,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         if (teacher.getRole() != 1) {
             throw new BusinessException(403, "无权限查询周课表视图！");
         }
@@ -193,7 +179,7 @@ public class CourseScheduleController {
     public Result<ScheduleAnalysisInitVO> getAnalysisInitInfo(
             @PathVariable Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {
-        Teacher teacher = getCurrentTeacher(token);
+        com.scbrbackend.common.context.CurrentUser teacher = com.scbrbackend.common.context.UserContext.getCurrentUser();
         // 当前优先按管理员接口实现，若需放开给教师，需校验排课的teacher_id
         if (teacher.getRole() != 1) {
             throw new BusinessException(403, "无权限访问！");
