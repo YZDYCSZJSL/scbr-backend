@@ -62,11 +62,11 @@ public class RealtimeAnalysisService {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private Teacher getCurrentTeacher(String token) {
-        if (token == null || !token.startsWith("mock_jwt_token_")) {
+        com.scbrbackend.common.context.CurrentUser currentUser = com.scbrbackend.common.context.UserContext.getCurrentUser();
+        if (currentUser == null) {
             throw new BusinessException(401, "未授权的访问！");
         }
-        String empNo = token.substring("mock_jwt_token_".length());
-        Teacher teacher = teacherMapper.selectOne(new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
+        Teacher teacher = teacherMapper.selectById(currentUser.getId());
         if (teacher == null) {
             throw new BusinessException(401, "无效的用户令牌！");
         }

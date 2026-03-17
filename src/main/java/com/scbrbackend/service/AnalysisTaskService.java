@@ -94,12 +94,11 @@ public class AnalysisTaskService extends ServiceImpl<AnalysisTaskMapper, Analysi
             Long scheduleId,
             Integer streamType, String token) {
         // 1. 获取教师身份信息
-        if (token == null || !token.startsWith("mock_jwt_token_")) {
+        com.scbrbackend.common.context.CurrentUser currentUser = com.scbrbackend.common.context.UserContext.getCurrentUser();
+        if (currentUser == null) {
             throw new BusinessException(401, "未授权的访问！");
         }
-        String empNo = token.substring("mock_jwt_token_".length());
-        Teacher currentTeacher = teacherMapper
-                .selectOne(new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
+        Teacher currentTeacher = teacherMapper.selectById(currentUser.getId());
         if (currentTeacher == null) {
             throw new BusinessException(401, "无效的用户令牌！");
         }

@@ -184,12 +184,11 @@ public class CourseScheduleService extends ServiceImpl<CourseScheduleMapper, Cou
     // ======================== analysis-list ========================
 
     public Result<List<ScheduleAnalysisItemVO>> getAnalysisList(int streamType, String token) {
-        if (token == null || !token.startsWith("mock_jwt_token_")) {
-            return Result.error(401, "未授权的访问！");
+        com.scbrbackend.common.context.CurrentUser currentUser = com.scbrbackend.common.context.UserContext.getCurrentUser();
+        if (currentUser == null) {
+            return Result.error(401, "无效的用户令牌！");
         }
-        String empNo = token.substring("mock_jwt_token_".length());
-        Teacher currentTeacher = teacherMapper.selectOne(
-                new LambdaQueryWrapper<Teacher>().eq(Teacher::getEmpNo, empNo));
+        Teacher currentTeacher = teacherMapper.selectById(currentUser.getId());
         if (currentTeacher == null) {
             return Result.error(401, "无效的用户令牌！");
         }

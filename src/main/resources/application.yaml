@@ -31,3 +31,8 @@ scbrbackend:
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
+
+
+jwt:
+  secret: ${jwt.secret}
+  expire-hours: ${jwt.expire-hours}
