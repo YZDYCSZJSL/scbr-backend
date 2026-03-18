@@ -52,6 +52,10 @@ public class ModelCallbackService {
     @Autowired
     private AnalysisTaskLogMapper analysisTaskLogMapper;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private ReportService reportService;
+
     @Transactional
     public void handleSuccess(ModelFileCallbackDTO callbackDTO) {
         Long taskId = callbackDTO.getTaskId();
@@ -72,7 +76,8 @@ public class ModelCallbackService {
             for (ModelFileCallbackDTO.Detail detailDto : details) {
                 AnalysisDetail detail = new AnalysisDetail();
                 detail.setTaskId(taskId);
-                detail.setRecordType(0); // 0-全量明细(文件流)
+                detail.setRecordType(detailDto.getRecordType() != null ? detailDto.getRecordType() : 0);
+                detail.setSnapshotUrl(detailDto.getSnapshotUrl());
                 detail.setFrameTime(detailDto.getFrameTime() != null ? detailDto.getFrameTime() : 0);
                 detail.setBehaviorType(detailDto.getBehaviorType());
                 detail.setCount(detailDto.getCount() != null ? detailDto.getCount() : 0);
@@ -117,6 +122,21 @@ public class ModelCallbackService {
         } catch (Exception e) {}
         finLog.setCreatedAt(LocalDateTime.now());
         analysisTaskLogMapper.insert(finLog);
+
+        // 自动生成 report
+        try {
+            reportService.generateReport(taskId, null);
+            log.info("内部自动生成报告成功, taskId: {}", taskId);
+        } catch (Exception e) {
+            log.error("内部自动生成报告失败, taskId: {}", taskId, e);
+            AnalysisTaskLog errLog = new AnalysisTaskLog();
+            errLog.setTaskId(taskId);
+            errLog.setStage("REPORT_GENERATION");
+            errLog.setStatus(0);
+            errLog.setMessage("生成报告失败: " + e.getMessage());
+            errLog.setCreatedAt(LocalDateTime.now());
+            analysisTaskLogMapper.insert(errLog);
+        }
     }
 
     private List<ModelFileCallbackDTO.Detail> normalizeDetails(List<ModelFileCallbackDTO.Detail> details) {

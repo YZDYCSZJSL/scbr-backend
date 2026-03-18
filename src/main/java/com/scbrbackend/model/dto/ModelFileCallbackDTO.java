@@ -16,6 +16,8 @@ public class ModelFileCallbackDTO {
         private Integer frameTime;
         private String behaviorType;
         private Integer count;
+        private Integer recordType;
+        private String snapshotUrl;
         private List<List<Double>> boundingBoxes;
     }
 

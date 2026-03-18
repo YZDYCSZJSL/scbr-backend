@@ -67,93 +67,176 @@ public class ReportServiceImpl implements ReportService {
         return Math.max(min, Math.min(max, val));
     }
 
-    private String buildSummaryText(com.scbrbackend.model.entity.AnalysisReport report) {
-        if (report == null) return "暂无评估摘要。";
+    private List<Map<String, Object>> buildBehaviorStats(List<AnalysisDetail> details) {
+        Map<String, Map<String, Object>> statsMap = new java.util.HashMap<>();
+        for (AnalysisDetail d : details) {
+            String type = d.getBehaviorType();
+            if (type == null) continue;
+            statsMap.putIfAbsent(type, new java.util.HashMap<>(Map.of("behaviorType", type, "totalCount", 0, "peakCount", 0, "ratio", "0%")));
+            Map<String, Object> stat = statsMap.get(type);
+            int currentTotal = (int) stat.get("totalCount") + (d.getCount() != null ? d.getCount() : 0);
+            int currentPeak = Math.max((int) stat.get("peakCount"), (d.getCount() != null ? d.getCount() : 0));
+            stat.put("totalCount", currentTotal);
+            stat.put("peakCount", currentPeak);
+        }
+        int allCount = statsMap.values().stream().mapToInt(v -> (int) v.get("totalCount")).sum();
+        for (Map<String, Object> stat : statsMap.values()) {
+            if (allCount > 0) {
+                double ratio = (double) ((int) stat.get("totalCount")) / allCount * 100;
+                stat.put("ratio", String.format("%.2f%%", ratio));
+            }
+        }
+        return new java.util.ArrayList<>(statsMap.values());
+    }
 
+    private List<Map<String, Object>> buildTrendData(List<AnalysisDetail> details, Integer mediaType) {
+        if (mediaType != null && mediaType == 1) return new java.util.ArrayList<>();
+        Map<String, Map<String, Object>> trendMap = new java.util.TreeMap<>();
+        for (AnalysisDetail d : details) {
+            if (d.getFrameTime() == null) continue;
+            int totalSecs = d.getFrameTime();
+            String timeStr = String.format("%02d:%02d:%02d", totalSecs / 3600, (totalSecs % 3600) / 60, totalSecs % 60);
+            trendMap.putIfAbsent(timeStr, new java.util.HashMap<>(Map.of("frameTime", timeStr)));
+            Map<String, Object> point = trendMap.get(timeStr);
+            point.put(d.getBehaviorType(), (int) point.getOrDefault(d.getBehaviorType(), 0) + (d.getCount() != null ? d.getCount() : 0));
+        }
+        return new java.util.ArrayList<>(trendMap.values());
+    }
+
+    private List<Map<String, Object>> buildAbnormalMoments(List<AnalysisDetail> details) {
+        List<Map<String, Object>> abnormalList = new java.util.ArrayList<>();
+        for (AnalysisDetail d : details) {
+            if (d.getSnapshotUrl() != null && !d.getSnapshotUrl().isEmpty()) {
+                Map<String, Object> am = new java.util.HashMap<>();
+                if (d.getFrameTime() != null) {
+                    int totalSecs = d.getFrameTime();
+                    am.put("frameTime", String.format("%02d:%02d:%02d", totalSecs / 3600, (totalSecs % 3600) / 60, totalSecs % 60));
+                    am.put("rawSeconds", d.getFrameTime());
+                } else {
+                    am.put("frameTime", null);
+                    am.put("rawSeconds", 0);
+                }
+                am.put("behaviorType", d.getBehaviorType());
+                am.put("count", d.getCount());
+                am.put("snapshotUrl", d.getSnapshotUrl());
+                abnormalList.add(am);
+            }
+        }
+        return abnormalList;
+    }
+
+    private List<String> getTopBehaviors(List<Map<String, Object>> stats, int topN) {
+        return stats.stream()
+                .sorted((a, b) -> Integer.compare((int) b.get("totalCount"), (int) a.get("totalCount")))
+                .limit(topN)
+                .map(s -> (String) s.get("behaviorType"))
+                .collect(Collectors.toList());
+    }
+
+    private boolean hasFocusDropInLaterPeriod(List<Map<String, Object>> trendData) {
+        if (trendData == null || trendData.size() < 4) return false;
+        int half = trendData.size() / 2;
+        int earlyFocus = 0, lateFocus = 0;
+        int earlyDistract = 0, lateDistract = 0;
+        
+        for (int i = 0; i < trendData.size(); i++) {
+            Map<String, Object> point = trendData.get(i);
+            int focus = (int) point.getOrDefault("正常听课", 0) + (int) point.getOrDefault("阅读", 0) + (int) point.getOrDefault("书写", 0);
+            int distract = (int) point.getOrDefault("玩手机", 0) + (int) point.getOrDefault("趴桌", 0);
+            if (i < half) { earlyFocus += focus; earlyDistract += distract; }
+            else { lateFocus += focus; lateDistract += distract; }
+        }
+        return lateDistract > earlyDistract * 1.5 || (earlyFocus > 0 && lateFocus < earlyFocus * 0.7);
+    }
+
+    private String getAbnormalBehaviorSummary(List<Map<String, Object>> abnormals) {
+        if (abnormals == null || abnormals.isEmpty()) return null;
+        List<String> types = abnormals.stream().map(a -> (String) a.get("behaviorType")).distinct().collect(Collectors.toList());
+        int startSec = abnormals.stream().mapToInt(a -> (int) a.getOrDefault("rawSeconds", 0)).min().orElse(0);
+        int endSec = abnormals.stream().mapToInt(a -> (int) a.getOrDefault("rawSeconds", 0)).max().orElse(0);
+        return String.format("共发现 %d 次异常抓拍，包含行为：%s。主要集中在第 %d ~ %d 秒附近。", abnormals.size(), String.join("、", types), startSec, endSec);
+    }
+
+    private boolean isInteractionWeak(List<Map<String, Object>> stats) {
+        int interactionCount = stats.stream()
+                .filter(s -> java.util.Arrays.asList("举手回答问题", "起立回答问题", "举手", "起立").contains((String) s.get("behaviorType")))
+                .mapToInt(s -> (int) s.get("totalCount"))
+                .sum();
+        int otherCount = stats.stream()
+                .filter(s -> !java.util.Arrays.asList("举手回答问题", "起立回答问题", "举手", "起立").contains((String) s.get("behaviorType")))
+                .mapToInt(s -> (int) s.get("totalCount"))
+                .sum();
+        return interactionCount == 0 || (otherCount > 0 && interactionCount < otherCount * 0.05);
+    }
+
+    private String buildSummaryTextFactDriven(com.scbrbackend.model.entity.AnalysisReport report,
+                                              List<Map<String, Object>> stats,
+                                              List<Map<String, Object>> trend,
+                                              List<Map<String, Object>> abnormals) {
         double totalScore = report.getTotalScore() != null ? report.getTotalScore().doubleValue() : 0.0;
-        double attendanceScore = report.getAttendanceScore() != null ? report.getAttendanceScore().doubleValue() : 0.0;
-        double focusScore = report.getFocusScore() != null ? report.getFocusScore().doubleValue() : 0.0;
-        double interactionScore = report.getInteractionScore() != null ? report.getInteractionScore().doubleValue() : 0.0;
-        double disciplineScore = report.getDisciplineScore() != null ? report.getDisciplineScore().doubleValue() : 0.0;
         String reportLevel = report.getReportLevel() != null ? report.getReportLevel() : "一般";
 
         StringBuilder sb = new StringBuilder();
+        sb.append(String.format("本节课综合评分为 %.1f 分，评估等级为 %s。\n", totalScore, reportLevel));
 
-        // 1. 总评
-        sb.append(String.format("本节课综合评分为 %.1f 分，评估等级为“%s”。", totalScore, reportLevel));
-
-        // 2. 出勤情况
-        if (attendanceScore >= 90) {
-            sb.append("课堂出勤情况良好，学生到课率较高。");
-        } else if (attendanceScore >= 80) {
-            sb.append("课堂出勤情况表现良好，基本按时到课。");
-        } else if (attendanceScore >= 70) {
-            sb.append("课堂出勤情况基本正常，但仍存在一定缺勤现象。");
-        } else {
-            sb.append("课堂出勤情况较弱，缺勤问题较明显。");
+        List<String> topBehaviors = getTopBehaviors(stats, 2);
+        if (!topBehaviors.isEmpty()) {
+            sb.append("课堂以").append(String.join("、", topBehaviors)).append("行为为主。");
         }
-
-        // 3. 专注情况
-        if (focusScore >= 90) {
-            sb.append("学生整体专注度较高，课堂学习状态很好。");
-        } else if (focusScore >= 80) {
-            sb.append("学生专注度表现良好，多数能跟上教学节奏。");
-        } else if (focusScore >= 70) {
-            sb.append("学生专注度一般，部分时段存在分心现象。");
+        
+        String abnormalSummary = getAbnormalBehaviorSummary(abnormals);
+        if (abnormalSummary != null) {
+            sb.append(abnormalSummary).append(" ");
         } else {
-            sb.append("学生专注度偏低，分心或不良学习行为较明显。");
+            sb.append("课堂内未见明显异常行为。");
         }
-
-        // 4. 互动情况
-        if (interactionScore >= 90) {
-            sb.append("课堂互动十分积极，学生参与度很高。");
-        } else if (interactionScore >= 80) {
-            sb.append("课堂互动较为积极，学生参与度较高。");
-        } else if (interactionScore >= 70) {
-            sb.append("课堂互动一般，个别学生能主动参与。");
-        } else {
-            sb.append("课堂互动偏弱，学生主动参与程度不足。");
+        
+        if (hasFocusDropInLaterPeriod(trend)) {
+            sb.append("课堂中后段分心行为（如玩手机/趴桌）有所上升或专注行为减少，专注状态出现波动。");
         }
-
-        // 5. 纪律情况
-        if (disciplineScore >= 90) {
-            sb.append("课堂纪律总体非常优秀，无异常行为。");
-        } else if (disciplineScore >= 80) {
-            sb.append("课堂纪律总体较好，异常行为极少。");
-        } else if (disciplineScore >= 70) {
-            sb.append("课堂纪律基本可控，偶尔出现违纪行为。");
+        
+        if (isInteractionWeak(stats)) {
+            sb.append("举手或起立互动行为较少，课堂互动仍有提升空间。");
         } else {
-            sb.append("课堂纪律情况较弱，异常行为较明显，需重点关注。");
+            sb.append("课堂互动频率较高，学生表现活跃。");
+        }
+        
+        if (totalScore >= 80 && abnormals.isEmpty()) {
+            sb.append("\n整体来看，课堂秩序稳定，学习氛围良好。");
+        } else if (totalScore < 70) {
+            sb.append("\n整体来看，课堂秩序存在挑战，需加强课堂管理。");
         }
 
         return sb.toString();
     }
 
-    private String buildSuggestionText(com.scbrbackend.model.entity.AnalysisReport report) {
-        if (report == null) return "暂无建议。";
-
+    private String buildSuggestionTextFactDriven(com.scbrbackend.model.entity.AnalysisReport report,
+                                                 List<Map<String, Object>> stats,
+                                                 List<Map<String, Object>> trend,
+                                                 List<Map<String, Object>> abnormals) {
         double attendanceScore = report.getAttendanceScore() != null ? report.getAttendanceScore().doubleValue() : 0.0;
-        double focusScore = report.getFocusScore() != null ? report.getFocusScore().doubleValue() : 0.0;
-        double interactionScore = report.getInteractionScore() != null ? report.getInteractionScore().doubleValue() : 0.0;
         double disciplineScore = report.getDisciplineScore() != null ? report.getDisciplineScore().doubleValue() : 0.0;
 
         java.util.List<String> suggestions = new java.util.ArrayList<>();
 
+        if (hasFocusDropInLaterPeriod(trend)) {
+            suggestions.add("建议教师在课堂中后段增加互动或节奏切换，以重新唤醒学生的专注度。");
+        }
+        
+        if (isInteractionWeak(stats)) {
+            suggestions.add("建议增加提问、小组讨论或课堂反馈环节，提升学生课堂参与度。");
+        }
+        
         if (attendanceScore < 85) {
-            suggestions.add("出勤管理：建议加强考勤管理，重点关注缺勤现象并了解缺勤原因。");
+             suggestions.add("关注考勤：出勤率欠佳，建议关注考勤与到课稳定性，了解缺课原因。");
         }
-        if (focusScore < 80) {
-            suggestions.add("专注度提升：建议优化课堂节奏，适时穿插生动案例或练习以提升学生专注度。");
-        }
-        if (interactionScore < 75) {
-            suggestions.add("课堂互动：建议增加课堂提问、小组讨论或互动设计，激发学生的参与热情。");
-        }
-        if (disciplineScore < 80) {
-            suggestions.add("纪律管理：建议加强课堂纪律把控，对分心或异常行为及时进行干预和提醒。");
+        
+        if (disciplineScore < 80 || (abnormals != null && !abnormals.isEmpty())) {
+             suggestions.add("纪律管理：出现异常行为抓拍，建议在后续课程中加强课堂巡视和纪律。");
         }
 
         if (suggestions.isEmpty()) {
-            return "本节课整体表现较好，建议继续保持当前教学组织方式，并适当加入互动环节提升课堂活力。";
+            return "课堂整体稳定且异常少，建议保持当前组织方式，并适当增强互动性。";
         }
 
         return String.join("\n", suggestions);
@@ -451,13 +534,14 @@ public class ReportServiceImpl implements ReportService {
         double snapshotPenalty = 0.0;
         
         for (AnalysisDetail d : details) {
-            if (d.getRecordType() == 2 && d.getSnapshotUrl() != null && !d.getSnapshotUrl().isEmpty()) {
+            Integer rType = d.getRecordType() != null ? d.getRecordType() : 0;
+            if (rType == 2 && d.getSnapshotUrl() != null && !d.getSnapshotUrl().isEmpty()) {
                 snapshotCount++;
                 double w = getW(weightMap, d.getBehaviorType());
                 snapshotPenalty += w;
                 continue;
             }
-            if (d.getRecordType() == 0 || d.getRecordType() == 1) {
+            if (rType == 0 || rType == 1) {
                 int ft = d.getFrameTime() == null ? 0 : d.getFrameTime();
                 uniqueFrames.add(ft);
                 frameSumMap.putIfAbsent(ft, new java.util.HashMap<>());
@@ -541,71 +625,26 @@ public class ReportServiceImpl implements ReportService {
         report.setReportLevel(reportLevel);
         report.setAbnormalFlag(abnormalFlag);
         
-        report.setSummaryText(buildSummaryText(report));
-        report.setSuggestionText(buildSuggestionText(report));
+        List<Map<String, Object>> statsData = new java.util.ArrayList<>();
+        List<Map<String, Object>> trendData = new java.util.ArrayList<>();
+        List<Map<String, Object>> abnormalData = new java.util.ArrayList<>();
         
         try {
-            // 1. behaviorStatsJson
-            java.util.Map<String, java.util.Map<String, Object>> statsMap = new java.util.HashMap<>();
-            for (AnalysisDetail d : details) {
-                String type = d.getBehaviorType();
-                if (type == null) continue;
-                statsMap.putIfAbsent(type, new java.util.HashMap<>(java.util.Map.of("behaviorType", type, "totalCount", 0, "peakCount", 0, "ratio", "0%")));
-                java.util.Map<String, Object> stat = statsMap.get(type);
-                int currentTotal = (int) stat.get("totalCount") + (d.getCount() != null ? d.getCount() : 0);
-                int currentPeak = Math.max((int) stat.get("peakCount"), (d.getCount() != null ? d.getCount() : 0));
-                stat.put("totalCount", currentTotal);
-                stat.put("peakCount", currentPeak);
-            }
-            int allCount = statsMap.values().stream().mapToInt(v -> (int) v.get("totalCount")).sum();
-            for (java.util.Map<String, Object> stat : statsMap.values()) {
-                if (allCount > 0) {
-                    double ratio = (double) ((int) stat.get("totalCount")) / allCount * 100;
-                    stat.put("ratio", String.format("%.2f%%", ratio));
-                }
-            }
-            report.setBehaviorStatsJson(objectMapper.writeValueAsString(new java.util.ArrayList<>(statsMap.values())));
+            statsData = buildBehaviorStats(details);
+            trendData = buildTrendData(details, task.getMediaType());
+            abnormalData = buildAbnormalMoments(details);
             
-            // 2. trendDataJson
-            if (task.getMediaType() != null && task.getMediaType() == 1) {
-                report.setTrendDataJson("[]");
-            } else {
-                java.util.Map<String, java.util.Map<String, Object>> trendMap = new java.util.TreeMap<>();
-                for (AnalysisDetail d : details) {
-                    if (d.getFrameTime() == null) continue;
-                    int totalSecs = d.getFrameTime();
-                    String timeStr = String.format("%02d:%02d:%02d", totalSecs / 3600, (totalSecs % 3600) / 60, totalSecs % 60);
-                    trendMap.putIfAbsent(timeStr, new java.util.HashMap<>(java.util.Map.of("frameTime", timeStr)));
-                    java.util.Map<String, Object> point = trendMap.get(timeStr);
-                    point.put(d.getBehaviorType(), (int) point.getOrDefault(d.getBehaviorType(), 0) + (d.getCount() != null ? d.getCount() : 0));
-                }
-                report.setTrendDataJson(objectMapper.writeValueAsString(new java.util.ArrayList<>(trendMap.values())));
-            }
-            
-            // 3. abnormalMomentsJson
-            List<java.util.Map<String, Object>> abnormalList = new java.util.ArrayList<>();
-            for (AnalysisDetail d : details) {
-                if (d.getSnapshotUrl() != null && !d.getSnapshotUrl().isEmpty()) {
-                    java.util.Map<String, Object> am = new java.util.HashMap<>();
-                    if (d.getFrameTime() != null) {
-                        int totalSecs = d.getFrameTime();
-                        am.put("frameTime", String.format("%02d:%02d:%02d", totalSecs / 3600, (totalSecs % 3600) / 60, totalSecs % 60));
-                    } else {
-                        am.put("frameTime", null);
-                    }
-                    am.put("behaviorType", d.getBehaviorType());
-                    am.put("count", d.getCount());
-                    am.put("snapshotUrl", d.getSnapshotUrl());
-                    abnormalList.add(am);
-                }
-            }
-            report.setAbnormalMomentsJson(objectMapper.writeValueAsString(abnormalList));
-            
+            report.setBehaviorStatsJson(objectMapper.writeValueAsString(statsData));
+            report.setTrendDataJson(objectMapper.writeValueAsString(trendData));
+            report.setAbnormalMomentsJson(objectMapper.writeValueAsString(abnormalData));
         } catch (Exception e) {
             report.setBehaviorStatsJson("[]");
             report.setTrendDataJson("[]");
             report.setAbnormalMomentsJson("[]");
         }
+
+        report.setSummaryText(buildSummaryTextFactDriven(report, statsData, trendData, abnormalData));
+        report.setSuggestionText(buildSuggestionTextFactDriven(report, statsData, trendData, abnormalData));
 
         if (isUpdate) {
             analysisReportService.updateById(report);

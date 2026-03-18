@@ -18,7 +18,7 @@ spring:
 
 scbrbackend:
   # 后端服务公网地址，用于作为模型端处理完后的回调地址。由于 127.0.0.1 会指向模型服务器自己，这里一定要改成后端服务器的真实公网IP和端口！
-  server-address: "http://${scbrbackend.server-address}:8080"
+  server-address: "http://${scbrbackend.server-address}"
   model:
     base-url: ${model.base-url}
     # 填入与 Python 模型服务实际配置一致的 token
